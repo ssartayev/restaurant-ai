@@ -48,6 +48,8 @@ jobs:
       - run: cd apps/web && npm ci --no-audit --no-fund && npm run build
       - run: cd e2e && npm install --no-audit --no-fund && npx playwright install --with-deps chromium
       - name: Camera upload browser test
+        env:
+          SEED_DEV: "0"
         run: |
           PYTHONPATH=apps/worker python -m uvicorn app.video:app --app-dir apps/api --port 8010 --log-level warning &
           sleep 4
