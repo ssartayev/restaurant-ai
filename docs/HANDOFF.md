@@ -1,27 +1,39 @@
-# Restaurant Camera handoff
+# Mise — current handbook and developer handoff
 
 ## Read this first
 
 - Snapshot date: 13 November 2026, Hong Kong.
-- Base commit: `c8c9f7dbc2663c4faa23c0164da30568c0fc001f` (the original restaurant management service). Working branch: `codex/simplify-floor`. This document describes the working tree, including untracked source files. Review `git status --short`, `git diff HEAD`, and `git ls-files --others --exclude-standard` before packaging or handing work to another agent. A diff alone omits the new files.
+- Base commit: `c8c9f7dbc2663c4faa23c0164da30568c0fc001f` (the original restaurant management service). Working branch: `codex/simplify-floor`. The implementation is committed through `5d35950`. Use `git diff c8c9f7d..HEAD --stat` for committed changes and `git status --short` for later work. The last push attempt failed because GitHub authentication was unavailable; a local commit does not mean collaborators can fetch it.
 - The app is a local prototype with a working order-to-kitchen loop, recorded-video analysis, and an RTSP edge ingestion path. It needs an on-site vision and operational pilot before production use.
 - The baseline `AGENTS.md` explains tenant rules, state-machine behavior, and original engineering decisions. Its original web file map, port, test counts, and some verification statements describe the base commit. The run instructions and source map below describe the current branch.
 - The Instagram reference shows camera overlays, service reminders, clearing and turnover, a waiting queue, and peak-time reporting. The prototype covers parts of that workflow. It has no browser feed for a physical live camera, verified waiter recognition, or cross-shift forecasting.
+
+## Current behavior at a glance
+
+- With an upload active, **Live board and Recordings share one footage session**. Without an upload, Live board shows the signed-in restaurant's stored operational floor.
+- Camera view shows object boxes; the 2D view shows table states, timers and estimated diners. Table names and moved floor positions survive in-app navigation.
+- Statistics follow playback time, including pause and seeking. They do not include future samples.
+- Manually marked waiters are followed using clothing color and nearby movement, with uncertainty stops. **These marks do not yet remove people from occupancy statistics.**
+- Reloading, closing footage or choosing another file ends the recording session. Recording changes are not saved to the operational database.
+- True browser live-camera video, automatic live layout discovery and reliable waiter recognition remain unfinished.
+- Current branding is Mise with the user's five-blue palette and white. Earlier cream/terracotta and chartreuse descriptions below are design history, not the active theme.
+
+Jump to [website handbook](#website-handbook-how-to-use-every-page), [architecture](#architecture-and-storage), [known problems](#known-problems-and-priorities), or [implementation commits](#implementation-commit-index).
 
 ## Run and demonstrate
 
 1. Use Python 3.11+ (verified locally with 3.12), Node 20+, make, and curl. From the repo root run `make video-setup` once. It creates the virtual environment, installs JS and Python packages, and fetches YOLOX-S and MediaPipe Lite into `.models/`.
 2. Run `make dev` and open `http://127.0.0.1:8002/`. Override the port with `VIDEO_PORT`. On a fresh checkout, the default database is local SQLite. This workspace has a local PostgreSQL cluster. Restart instructions are in [README](../README.md).
 3. Use **Start sample restaurant** for an isolated, seeded tenant with table and report history. Demo sessions expire after 24 hours. For a real deployment disable dev seeding and replace demo onboarding with restaurant provisioning.
-4. On **Live board**, mark a table occupied or ready, add a waiting party, or send a dish to the kitchen. On **Kitchen**, progress a ticket through Preparing, Ready and Served. In **History**, choose a range and inspect arrival and service timing patterns. In **Assistant**, run a Weekly, Monthly, or Yearly summary, then reload to see the saved exchange. Typed Gemini questions require `GEMINI_API_KEY` and `GEMINI_MODEL` in the server environment. No credentials belong in Git.
-5. On **Recordings**, upload a browser-playable H.264 MP4 up to 250 MB. Wait for analysis, then play or seek. Select a marker to rename it, switch to **2D floor plan**, and drag or move it with arrow keys. The name is shared between views and positions in the floor plan are independent of the footage.
+4. With no upload active (use **Close footage** if needed), on **Live board**, mark a table occupied or ready, add a waiting party, or send a dish to the kitchen. On **Kitchen**, progress a ticket through Preparing, Ready and Served. In **History**, choose a range and inspect arrival and service timing patterns. In **Assistant**, run a Weekly, Monthly, or Yearly summary, then reload to see the saved exchange. Typed Gemini questions require `GEMINI_API_KEY` and `GEMINI_MODEL` in the server environment. No credentials belong in Git.
+5. On **Recordings**, upload a browser-playable H.264 MP4 up to 250 MB. Wait for analysis, then play or seek. Select a marker to rename it, switch to **2D floor plan**, and drag or move it with arrow keys. The name is shared between views and positions in the floor plan are independent of the footage. Open **Live board** to continue the same footage in 2D. Click a person label to pause, then **Mark selected person as waiter**; see the handbook for tracking limitations.
 6. On **Cameras**, provision a table and camera, save the one-time token in a private worker file, and configure zones using normalized image coordinates. For the edge launch command and stream URL configuration, see the README. Use a real HTTPS backend URL when the worker is on a separate host. On-site workers are the only processes that need RTSP credentials.
 
 ## Architecture and storage
 
 | Surface | Current implementation |
 |---|---|
-| Browser | React 18, TypeScript, Vite. `main.tsx` is the recording-review view and SPA entry point. `Operations.tsx` owns navigation, sessions, Live board, Kitchen and Cameras. `Insights.tsx` owns History, Assistant and the shared JSON request helper. `video.css` contains the light restaurant palette, responsive layout, and reduced-motion support. |
+| Browser | React 18, TypeScript, Vite. `main.tsx` owns the SPA navigation and keeps the shared recording session mounted; `staffTracking.ts` matches manually marked staff using clothing descriptors. `Operations.tsx` owns navigation, sessions, Live board, Kitchen and Cameras. `Insights.tsx` owns History, Assistant and the shared JSON request helper. `video.css` contains the blue/white Mise palette, responsive layout, and reduced-motion support. |
 | Web server | `apps/api/app/video.py` is the default local FastAPI entry point. It serves `POST /analyze`, includes the existing management routes, runs their lifespan, and serves the built SPA. `app.main:app` remains the management-only entry point with API and built SPA. |
 | Operational data | `app/models.py`, `db.py`, and `service.py`. SQLAlchemy on SQLite or PostgreSQL. Tenant-owned data is scoped by restaurant membership; device requests use a hashed camera token. Database timestamps are UTC. API reads are role-scoped, and calendar ranges use the restaurant time zone. |
 | Live video | `apps/worker/worker/agent.py` opens RTSP on the edge, samples frames, and sends JSON through `transport.py`. No frame, face ID or track ID is sent through edge ingest. A local SQLite queue retries occupancy events. Heartbeats reconcile state and carry latest tableware and presence evidence. Browser refreshes floor and order snapshots on SSE, with polling fallback. Event fan-out is in-process and assumes one API process. |
@@ -46,13 +58,13 @@ Local database history: SQLite `dev.db` is retained. PostgreSQL 17 was installed
 - Added upload analysis with automatic table IDs, timed occupancy and counts, approximate 2D floor layout, per-session drag/rename, table capacity, waitlist and reset controls, tableware overlays, and recording metrics.
 - Added the default Live board, database-backed kitchen ticket lifecycle, manual table and payment actions, waitlist matching, camera onboarding and rectangular zone entry, admin-only delayed payment alert, and queue-aware reset priority. The last selects a clearing table that fits a waiting party and has no open bill.
 - Added calendar reports, custom date ranges, order timing summaries, database-backed Assistant history, and optional Gemini configuration. The current pass adds saved key-free report shortcuts and a manual chat composer.
-- Redesigned around dark navigation, warm cream/terracotta content surfaces, clear status colors, a two-column floor and queue layout, a History heatmap and median timing bars, chat bubbles, and subtle entrance/bar animations. Reduced-motion preferences disable animation. Design references include [Digital of Things](https://www.awwwards.com/sites/digital-of-things), [Linear](https://linear.app/), [Higgsfield](https://higgsfield.ai/), and [Geist](https://vercel.com/geist/introduction). No theme framework or chart dependency was added.
+- Redesigned around branded navigation and blue/white surfaces (earlier cream/terracotta and chartreuse themes were superseded), clear status colors, a two-column floor and queue layout, a History heatmap and median timing bars, chat bubbles, and subtle entrance/bar animations. Reduced-motion preferences disable animation. Design references include [Digital of Things](https://www.awwwards.com/sites/digital-of-things), [Linear](https://linear.app/), [Higgsfield](https://higgsfield.ai/), and [Geist](https://vercel.com/geist/introduction). No theme framework or chart dependency was added.
 - Fixed report boundary accounting for already-occupied tables, debounced tableware evidence on recordings, updated the OpenAPI and heartbeat contracts, and updated CI and browser tests for the current app. CI configuration was edited locally and still needs a GitHub run after a push.
-- For the exact file inventory, run `git diff --name-status HEAD` and `git ls-files --others --exclude-standard`. Removed frontend modules are `App.tsx`, `Dashboard.tsx`, `Analytics.tsx`, `Setup.tsx`, `api.ts`, and `styles.css`. The new frontend files are `Operations.tsx`, `Insights.tsx`, and `video.css`. New backend/vision files are `video.py`, `pose.py`, `table_activity.py`, `report_chat.py`, and `worker/tableware.py`.
+- For the exact file inventory, run `git diff --name-status c8c9f7d..HEAD` plus `git status --short`. Removed frontend modules are `App.tsx`, `Dashboard.tsx`, `Analytics.tsx`, `Setup.tsx`, `api.ts`, and `styles.css`. The new frontend files include `Operations.tsx`, `Insights.tsx`, `staffTracking.ts`, and `video.css`. New backend/vision files are `video.py`, `pose.py`, `roles.py`, `table_activity.py`, `report_chat.py`, and `worker/tableware.py`.
 
 ## Verification and vision evidence
 
-- `make test` passed 66 API tests on SQLite, 22 worker tests, and the web type-check. A Starlette test-client deprecation warning remains.
+- Latest implementation verification: `make test` passed 69 API tests on SQLite, 22 worker tests, and the web type-check. A Starlette test-client deprecation warning remains.
 - `TEST_DATABASE_URL=… make test-api` passed 66 API tests using an isolated PostgreSQL 17 database. The operational database was outside this test.
 - `CCTV_TEST_VIDEO=/path/to/Cctv-Resturant-Demo.mp4 make e2e` passed invalid upload handling, real CCTV analysis, floor/camera table parity, dragging, renaming, kitchen ticket lifecycle, History heatmap, saved weekly shortcut across reload, and the mobile composer. Install the browser with `cd e2e && npm install && npx playwright install chromium` if needed. The Gemini response integration was tested with a stub in the API suite. No live Gemini request was verified.
 - Desktop screenshots of the Live board, History, and a saved Monthly summary were inspected in Chromium. The monthly summary also wrote to the PostgreSQL-backed local app through a temporary demo tenant. No permanent screenshot artifacts are required to build.
@@ -74,7 +86,7 @@ The original 44-second recording ran in about five seconds on this Mac in a dire
 
 ### Before showing judges
 
-- Use the sample restaurant and a tested clip. Explain that the board uses persisted live operational data, while uploaded recording review has its own session and camera timeline. Names, layout positions, and staff actions from recording review do not populate the operational database. Recording review can use the same device/browser even when operational auth is absent; it should stay local until an authenticated upload design is implemented.
+- Use the sample restaurant and a tested clip. Explain which source is active: an uploaded recording makes Live board share that recording session; closing it restores persisted operational data. Names, layout positions, and staff actions from recording review do not populate the operational database. Recording review can use the same device/browser even when operational auth is absent; it should stay local until an authenticated upload design is implemented.
 - Use the exact **Weekly summary** shortcut to demonstrate saved chat without credentials. For live free-form Q&A configure a Gemini model and key on the backend. Questions requiring revenue, payments, dish-level timings or staffing assignments cannot be answered from the current report. Reports can distinguish missing medians from zero tickets; occupancy uses all elapsed calendar time, not staffed opening hours.
 - Avoid implying that a clean table or unpaid departure is proven by vision. Tableware is supporting evidence. An admin payment check uses a manual bill record and five minutes of fresh camera vacancy; a new presence detection cancels it. Staff remain responsible for confirming payment and readiness.
 - The demo uses quick setup and existing data. Camera zones currently require normalized rectangle entry, rather than drawing directly on a calibration image.
@@ -103,7 +115,7 @@ The original 44-second recording ran in about five seconds on this Mac in a dire
 - For new operational endpoints use `Depends(member(...))` and tenant-filter every child lookup. Add a positive-path test alongside tenant isolation tests. Keep the camera state transition contract intact and publish SSE only after the DB write commits.
 - Models are sourced from the [YOLOX release](https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0) and [Google MediaPipe Pose Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker). YOLOX's COCO class list [includes bowl, cup, glass and cutlery](https://huggingface.co/amd/yolox-s/blob/632a5be3e99ff16407a0649e0f0758dccc2bb4aa/coco.py), without a plate class.
 
-## Mise visual identity — latest revision, 13 November 2026
+## Mise visual identity — historical design revision, 13 November 2026
 
 The latest user feedback explicitly releases the white-only constraint. Beige/terracotta was rejected as boring; native file inputs and the monolithic camera configuration form were specifically called out. The requirement is a distinctive, modern, understandable product suitable for hackathon judging, with consistent branding and restrained animations. The design must support staff work, not add operational complexity.
 
@@ -156,23 +168,38 @@ This is a consolidated product record of the available chat, not a verbatim tran
 
 The user's five-blue reference supersedes the chartreuse Mise palette: midnight #03092c, ocean #0c3a68, royal #102774, deep #061e51, sky #106da4, with white and pale surfaces. The Mise name and table-shaped mark remain. No yellow brand accent remains; semantic amber cleaning warnings are operational status, not branding.
 
-Recording analysis now returns timestamped normalized object boxes, class labels and detector confidence. Camera playback shows Table, Person / Seated person, Glass, Cup, Fork, Knife, Spoon and Bowl when detected. Table ID buttons remain selectable; the operational status/count/timer cards belong to the 2D view. The boxes refresh at sampled timestamps (about 1 Hz), not full-frame tracking. No waiter classifier has been added, and “Seated person” does not prove a client role. The model does not have a plate class or prove cleanliness. Camera confidence percentages are object detector scores, not role confidence.
+Recording analysis now returns timestamped normalized object boxes, class labels and detector confidence. Camera playback shows Table, Glass, Cup, Fork, Knife, Spoon and Bowl when detected. Person labels now show role uncertain, Likely guest, Possible waiter, or Waiter · staff marked after manual annotation. Table ID buttons remain selectable; the operational status/count/timer cards belong to the 2D view. The boxes refresh at sampled timestamps (about 1 Hz), not full-frame tracking. No waiter classifier has been added, and “Seated person” does not prove a client role. The model does not have a plate class or prove cleanliness. Camera confidence percentages are object detector scores, not role confidence.
 
 This implements object overlays on uploaded recording playback only. The requested true live-video object overlay is still outstanding: the browser currently has no RTSP/WebRTC video surface and the live edge contract intentionally excludes boxes/images/track IDs. A future implementation should render annotations on the restaurant's edge/local viewer or introduce a separately secured, explicitly designed stream; do not smuggle frames or person coordinates into the table-level cloud event schema. No identity recognition is required.
 
 ## Website handbook: how to use every page
 
 ### Start and sign in
-Run `make dev` and open http://localhost:8002. Sign in with a staff account, or choose **Start sample restaurant** for an isolated temporary demo. Sample data is artificial and the sandbox expires after 24 hours. Available navigation depends on your role; History, Assistant and Cameras require administrator access. Sign out using the page-header button.
+Run `make dev` and open http://localhost:8002. Sign in with a staff account, or choose **Start sample restaurant** for an isolated temporary demo. Sample data is artificial and the sandbox expires after 24 hours. Available navigation depends on your role; History, Assistant and Cameras require administrator access. Sign out using the header on an operational page; when reviewing footage, use **Close footage** and return to Live board first.
 
 ### Live board
-This is the daily operational view. The top counters show occupied, ready and clearing tables and waiting parties. Table cards show capacity and current state. Use **Mark occupied**, **Party left**, and **Mark ready** to correct the floor manually. Camera evidence never confirms Ready for you. Add a party name and size in Waiting parties; **Seat at …** confirms a suggested table. The reset-priority hint highlights a table that fits a waiting party. Open-bill alerts request staff review after a grace period; use **Acknowledge**, check the situation, and **Mark bill paid** only after actual payment. This button records payment status; it does not charge a customer. To place an order, select a table, enter a dish and quantity, then choose **Send to kitchen**. The page works without a camera.
+
+**When footage is active:** the source banner names your file. The board opens the same recording in **2D floor plan**, using its detected tables, edited names, moved positions, waiter marks and playback time. Use the video controls beneath the floor to play, pause and seek; the counters and timers follow that media time. Switch to **Camera** to inspect boxes. Navigation to Recordings preserves the same session. Choose **Close footage** to return to saved restaurant operations. A browser reload also ends the footage session.
+
+**Without active footage:** this is the daily operational floor from the restaurant database, which can include seeded sample data. Counters show occupied, ready and clearing tables and waiting parties. Use **Mark occupied**, **Party left**, and **Mark ready** to correct the floor; cameras cannot confirm Ready. Add a party name and size, then **Seat at …** to confirm a suggestion. The reset-priority hint highlights a suitable clearing table. Review open-bill alerts with **Acknowledge**; choose **Mark bill paid** only after actual payment. This records status and does not charge a customer. Select a table, dish and quantity and choose **Send to kitchen** to place an internal ticket. This mode works without a camera.
+
+Recording-local seating and waiter marks do not create kitchen orders or update the saved restaurant. Do not use the sample restaurant as evidence that the uploaded footage has been written into real operations.
 
 ### Kitchen
 Find the ticket by table and dish. Progress it with **Mark preparing**, **Mark ready**, then **Mark served**. Served tickets leave the active list. These timestamps contribute to reporting. This is a basic internal ticket workflow, not an integrated commercial POS.
 
 ### Recordings
-Choose a browser-playable restaurant video (prefer H.264 MP4, maximum 250 MB), wait for analysis, then play, pause or seek. Camera view shows object rectangles and detector scores. Select a table ID to edit its number in the side panel. **2D floor plan** shows table status, estimated diners and timers; drag tables or use arrow keys after selecting one. Renaming is shared across the two views; moving a floor-plan table does not move its camera location. Set capacities, review reminders and use recording-local staff controls as needed. Expand **Recording statistics** for estimates. Recording edits and waiting parties are local to this review and reset on reload/new upload; they are not the operational restaurant database. Detection is sampled and fallible: people are not reliably classified as waiters or clients, and detected dishes do not establish dirt. Uploaded video is analyzed on this server; it is not the edge-only live workflow.
+
+1. Choose a browser-playable video, preferably H.264 MP4, up to 250 MB. Analysis runs on the local server before the overlays appear. Changing the file resets the review.
+2. Play, pause or seek. **Camera** shows detected objects with rectangles. Non-person percentages are detection scores, not proof of cleanliness or a person's role. Labels are sampled about once per second.
+3. Select a table ID and edit **Table number** in the side panel. Switch to **2D floor plan** and drag tables, or select one and use arrow keys. Names are shared between views; moving a floor table leaves its video location unchanged.
+4. Set seat capacities and use the recording-local waitlist, greeting and ready controls when needed. These are review controls, not database transactions.
+5. To identify staff, click a person's text label. Playback pauses. Choose **Mark selected person as waiter** under **Identify waiters**, then resume playback. The mark follows similar clothing and nearby movement from that timestamp onward. If tracking stops after an obstruction or ambiguous crossing, mark the person again. **Clear waiter marks** removes all marks. No matching is performed across files or after reload, and waiter marks currently change labels only, not diner counts.
+6. **Recording statistics** is open by default. Its heading shows the playback cutoff. Occupied duration and peak seated counts include only evidence up to that point. Pausing freezes them; rewinding recalculates them; replay does not double-count. Long evidence gaps are not filled indefinitely.
+7. Open **Live board** to see the same session in the 2D view. Return to Recordings for Camera view. Opening Kitchen, History, Assistant or Cameras pauses the video while retaining the review in memory. Use the website navigation for this; a hard reload or a new tab cannot preserve the in-memory session.
+8. Choose **Close footage** to stop the review. Names, positions, capacities, waiting parties, staff marks and other review edits are not durably saved.
+
+The source is a recording even while it is playing. True live RTSP video display is not implemented. Uploaded review and saved operational reporting are separate; table discovery still uses the complete recording even though displayed statistics are restricted to elapsed playback.
 
 ### History
 Choose week, month, year or a custom date interval. Inspect occupancy/turn counts, weekday-hour arrivals and service-time charts. Reports use persisted operational events and restaurant-local calendar ranges, not recording-review actions. Empty or missing values mean there may be insufficient evidence; they are not proof of zero activity. Only administrators can access this page.
@@ -262,3 +289,29 @@ The root workspace now owns navigation and keeps recording review mounted during
 Verification: make test passed (69 API, 22 worker, TypeScript). CCTV make e2e passed, now checking that the Live board shows the same six tables and renamed Patio 1, and navigation preserves paused playback time. Existing playback/statistics, appearance marking, overlays, kitchen, report and chat checks still pass.
 
 Remaining: true live RTSP browser video, automatic live layout calibration, and a unified persisted source/table mapping are NOT implemented by this UI change. Live worker data still updates configured operational tables. Uploaded review is not written into actual service history, orders or bills. Do not imply parity between these pipelines; the source switch fixes misleading sample data during a recording review.
+
+## Implementation commit index
+
+All IDs below are local commits on codex/simplify-floor. Remote publication remains unverified.
+
+| Commit | Included work |
+|---|---|
+| 0eeaed4 | Consolidated operations, recording vision, blue Mise UI, object overlays, database/report/chat additions and initial handoff since the baseline |
+| ad2bfcd | Removed duplicate boxes outside the video; added overlay containment regression check |
+| aa704ca | Conservative temporal guest/waiter estimates, role tests and four-recording evidence |
+| 1d034c6 | Playback cutoff for statistics, pause/seek behavior and no-double-counting tests |
+| b047069 | Manual waiter selection, torso color descriptor, conservative appearance matching, clear action and browser checks |
+| 5d35950 | Shared footage session across Live board and Recordings, source banner, close action and navigation checks |
+
+## Troubleshooting and continuation checklist
+
+- **Wrong floor on Live board:** check the active-source banner. Upload a recording and navigate in the same tab. After closing/reloading there is no footage session, so the persisted restaurant floor is expected.
+- **Waiter label disappears:** tracking expired or found ambiguity. Pause and mark again. Similar uniforms and changes of lighting are known limitations.
+- **Marked waiter still affects occupancy:** this is a known missing integration, not a saved setting error. Next engineering task: recompute per-person occupancy evidence and statistics after role correction, with tests for seeking and guests crossing staff.
+- **Statistics differ from History:** recording statistics follow media time; History queries operational DB timestamps. They are intentionally not merged yet.
+- **No camera video after provisioning:** registration and an edge worker send table JSON; a browser live stream still needs implementation.
+- **Upload looks wrong:** low light, occlusions, camera movement and unusual layouts remain unreliable. Use labeled multi-restaurant validation, not only the original clip.
+- **Cannot see admin pages:** sign in as an administrator. Free-form Assistant replies also require server-side Gemini configuration.
+- **Changes missing on GitHub:** authenticate Git and push codex/simplify-floor. Do not merge into main or claim CI passed without checking the remote.
+
+This documentation update changes no runtime code. The latest preceding implementation checks were 69 API tests, 22 worker tests, TypeScript, and the CCTV browser workflow, including shared board names/layout and paused playback preservation. Documentation-only verification: diff whitespace and Markdown heading/link review.

@@ -49,4 +49,4 @@ YOLOX tableware counts are supporting evidence for clearing. A count of zero doe
 
 The Assistant page stores the question, report snapshot, timestamps, and generated answer. Set `GEMINI_API_KEY` and `GEMINI_MODEL` in the backend environment to enable generation. Failed requests still appear in history without an answer.
 
-For current architecture, testing evidence, and the full working-tree changelog, see [the handoff](docs/HANDOFF.md).
+For the updated page-by-page usage handbook, active-footage workflow, waiter marking, architecture, known limitations, testing evidence and commit history, see [the Mise handbook and developer handoff](docs/HANDOFF.md).
