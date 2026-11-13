@@ -18,6 +18,16 @@ async function main() {
       await file.setInputFiles(process.env.CCTV_TEST_VIDEO);
       await page.locator(".camera .table-marker").first().waitFor({ timeout: 120000 });
       await page.locator(".camera .object-box").first().waitFor();
+      const overlaysContained = await page.locator(".object-box").evaluateAll((boxes) =>
+        boxes.every((box) => {
+          const camera = box.closest(".camera");
+          if (!camera) return false;
+          const bounds = camera.getBoundingClientRect(), rect = box.getBoundingClientRect();
+          return rect.left >= bounds.left - 1 && rect.top >= bounds.top - 1 &&
+            rect.right <= bounds.right + 1 && rect.bottom <= bounds.bottom + 1;
+        }));
+      if (!overlaysContained) throw new Error("Object overlays escaped the video");
+
       await page.locator("video").evaluate((video) => video.play());
       await page.waitForFunction(() => document.querySelector("video").currentTime > 0);
       const labels = await page.locator(".camera .table-marker").allTextContents();

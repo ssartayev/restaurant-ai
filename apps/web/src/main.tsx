@@ -216,13 +216,6 @@ function CameraReview() {
       </section>}
       <section aria-label="Staff alerts">
         <h2>Staff alerts</h2>
-        {view === "camera" && (analysis?.objects?.[index]?.[1] ?? []).map((object, objectIndex) => {
-        const [left, top, right, bottom] = object.box;
-        return <div className="object-box" data-kind={object.kind} key={objectIndex}
-          style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${(right-left)*100}%`, height: `${(bottom-top)*100}%` }}>
-          <span>{object.label} · {Math.round(object.confidence * 100)}%</span>
-        </div>;
-      })}
       {tables.map((table, i) => {
           const reading = states[i];
           if (reading?.state === "occupied" && time - reading.since >= 60 &&
