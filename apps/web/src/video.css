@@ -292,3 +292,7 @@ main { max-width: 1480px; }
 .object-box span { position: absolute; left: -2px; top: 0; max-width: 200px; white-space: nowrap; background: #061e51e8; color: white; padding: 3px 5px; font-size: clamp(.55rem,1vw,.75rem); }
 .object-box[data-kind="person"] { border-color: white; }
 .camera .table-marker { background: #061e51df; color: white; font-size: .7rem; }
+
+.person-label { pointer-events: auto; position: absolute; top: 0; left: 0; white-space: nowrap; background: #061e51; color: white; border: 1px solid white; border-radius: 4px; padding: 5px; font-size: .7rem; cursor: pointer; }
+.staff-identification { margin-top: 15px; }
+.staff-identification small { display: block; margin-top: 12px; color: var(--muted); }

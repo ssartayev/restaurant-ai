@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./video.css";
+import { matchStaff, StaffMark } from "./staffTracking";
 import { Navigation, Operations } from "./Operations";
 
 type Table = { id: number; x: number; y: number; box: [number, number, number, number] };
 type Reading = { tableware_count?: number; state: string; people: number; since: number };
-type ObjectDetection = { box: [number, number, number, number]; label: string; kind: string; confidence: number; reason?: string };
+type ObjectDetection = { box: [number, number, number, number]; label: string; kind: string; confidence: number; reason?: string; appearance?: number[] };
 type Analysis = { tables: Table[]; timeline: [number, Reading[]][]; objects?: [number, ObjectDetection[]][] };
 
 function clock(seconds: number) {
@@ -14,6 +15,9 @@ function clock(seconds: number) {
 }
 
 function CameraReview() {
+  const [staffMarks, setStaffMarks] = useState<StaffMark[]>([]);
+  const [personSelection, setPersonSelection] = useState<StaffMark>();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [file, setFile] = useState<File>();
   const [url, setUrl] = useState("");
   const [analysis, setAnalysis] = useState<Analysis>();
@@ -37,6 +41,8 @@ function CameraReview() {
     const request = new AbortController();
     setUrl(objectUrl);
     setAnalysis(undefined);
+    setStaffMarks([]);
+    setPersonSelection(undefined);
     setTime(0);
     setReadyAt({});
     setNames({});
@@ -74,6 +80,7 @@ function CameraReview() {
 
   const timeline = analysis?.timeline ?? [];
   const tables = analysis?.tables ?? [];
+  const staffMatches = useMemo(() => matchStaff(analysis?.objects ?? [], staffMarks), [analysis, staffMarks]);
   let index = Math.min(timeline.length - 1, Math.floor(time));
   while (index + 1 < timeline.length && timeline[index + 1][0] <= time) index++;
   while (index > 0 && timeline[index][0] > time) index--;
@@ -130,7 +137,7 @@ function CameraReview() {
     <div className="workspace">
     <section>
     {url ? <div className={view === "camera" ? "camera" : "floor-view"} style={{ aspectRatio: ratio }}>
-      <video key={url} className={view === "floor" ? "floor-player" : undefined} src={url} controls muted playsInline
+      <video ref={videoRef} key={url} className={view === "floor" ? "floor-player" : undefined} src={url} controls muted playsInline
         onLoadedMetadata={({ currentTarget: video }) => {
           if (video.videoHeight) setRatio(video.videoWidth / video.videoHeight);
         }}
@@ -141,7 +148,10 @@ function CameraReview() {
         const [left, top, right, bottom] = object.box;
         return <div className="object-box" data-kind={object.kind} key={objectIndex}
           style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${(right-left)*100}%`, height: `${(bottom-top)*100}%` }}>
-          <span title={object.reason}>{object.label}{object.kind !== "person" && ` · ${Math.round(object.confidence * 100)}%`}</span>
+          {object.kind === "person" ? <button className="person-label" aria-label={`Select person ${objectIndex + 1}`}
+            onClick={() => { videoRef.current?.pause(); setPersonSelection({ sample: index, object: objectIndex }); }}>
+            {staffMatches.has(index + ":" + objectIndex) ? "Waiter · staff marked" : object.label}
+          </button> : <span title={object.reason}>{object.label} · {Math.round(object.confidence * 100)}%</span>}
         </div>;
       })}
       {tables.map((table, i) => {
@@ -185,6 +195,14 @@ function CameraReview() {
         </button>;
       })}
     </div> : <div className="empty recording-empty"><div><span className="empty-orbit" aria-hidden="true">↗</span><p className="eyebrow">A NEW PERSPECTIVE ON SERVICE</p><h2>Your dining room. In focus.</h2><p>Choose a fixed-camera restaurant recording to begin.</p><div className="empty-steps"><span>01 Upload</span><span>02 Analyze</span><span>03 Explore the floor</span></div></div></div>}
+    {analysis && <section className="ops-card staff-identification">
+      <h2>Identify waiters</h2>
+      <p>Click a person’s label to pause and select them. Clothing color and nearby movement carry your mark forward; ambiguous crossings or gaps stop it.</p>
+      {personSelection && <button onClick={() => { setStaffMarks(current => [...current.filter(mark => mark.sample !== personSelection.sample || mark.object !== personSelection.object), personSelection]); setPersonSelection(undefined); }}>Mark selected person as waiter</button>}
+      {staffMarks.length > 0 && <button onClick={() => { setStaffMarks([]); setPersonSelection(undefined); }}>Clear waiter marks</button>}
+      <small>{staffMarks.length} manual marks · {Array.from(staffMatches).filter(key => key.startsWith(index + ":")).length} matched in this frame. Marks stay in this recording session only.</small>
+      <p className="note">This labels staff for review. Existing occupancy statistics are not recalculated by these marks yet.</p>
+    </section>}
     {view === "camera" && analysis && <p className="note">Detection boxes sampled about once per second. Guest/waiter labels are behavioral estimates, not verified roles. Uncertain people remain unclassified; cleanliness is not verified.</p>}
     {view === "floor" && <p className="note">Drag tables to arrange the floor plan. Select a table to edit its number.</p>}
     {tables.length > 0 && <details open className="playback-statistics" data-playback-time={time}>

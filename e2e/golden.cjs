@@ -18,6 +18,12 @@ async function main() {
       await file.setInputFiles(process.env.CCTV_TEST_VIDEO);
       await page.locator(".camera .table-marker").first().waitFor({ timeout: 120000 });
       await page.locator(".camera .object-box").first().waitFor();
+      await page.locator(".person-label").first().click();
+      await page.getByRole("button", {name: "Mark selected person as waiter"}).click();
+      await page.getByText("Waiter · staff marked", {exact: true}).first().waitFor();
+      await page.getByRole("button", {name: "Clear waiter marks"}).click();
+      if (await page.getByText("Waiter · staff marked", {exact: true}).count()) throw new Error("Staff mark did not clear");
+
       const overlaysContained = await page.locator(".object-box").evaluateAll((boxes) =>
         boxes.every((box) => {
           const camera = box.closest(".camera");

@@ -88,6 +88,16 @@ def analyze(path, pose_model=None):
                 for (box, _, _), (label, reason) in zip(person_evidence, roles.update(index / fps, person_evidence)):
                     add_object(box, label, "person")
                     frame_objects[-1]["reason"] = reason
+                    # Clothing-only descriptor: central torso, excluding the head.
+                    h, w = frame.shape[:2]
+                    bw, bh = box.x2-box.x1, box.y2-box.y1
+                    crop = frame[int(max(0, box.y1+.25*bh)*h):int(min(1, box.y1+.65*bh)*h),
+                                 int(max(0, box.x1+.2*bw)*w):int(min(1, box.x2-.2*bw)*w)]
+                    if crop.size:
+                        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+                        hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 4, 4], [0, 180, 0, 256, 0, 256])
+                        hist /= max(float(hist.sum()), 1)
+                        frame_objects[-1]["appearance"] = hist.flatten().tolist()
                 samples.append((index / fps, people))
                 objects.append((index / fps, frame_objects))
                 matched = set()
