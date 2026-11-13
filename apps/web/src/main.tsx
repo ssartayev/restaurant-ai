@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./video.css";
-import { matchStaff, StaffMark } from "./staffTracking";
+import { matchStaff, staffTracks, StaffMark } from "./staffTracking";
 import { Navigation, Operations } from "./Operations";
 
-type Table = { id: number; x: number; y: number; box: [number, number, number, number] };
+type Table = { id: number; x: number; y: number; box: [number, number, number, number]; manual?: boolean };
 type Reading = { tableware_count?: number; state: string; people: number; since: number };
-type ObjectDetection = { box: [number, number, number, number]; label: string; kind: string; confidence: number; reason?: string; appearance?: number[] };
-type Analysis = { tables: Table[]; timeline: [number, Reading[]][]; objects?: [number, ObjectDetection[]][] };
+type ObjectDetection = { box: [number, number, number, number]; label: string; kind: string; confidence: number; reason?: string; appearance?: number[]; track?: number };
+type Analysis = { id?: string; tables: Table[]; timeline: [number, Reading[]][]; objects?: [number, ObjectDetection[]][] };
 
 function clock(seconds: number) {
   const whole = Math.max(0, Math.floor(seconds));
@@ -35,6 +35,26 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
   const [time, setTime] = useState(0);
   const [view, setView] = useState<"camera" | "floor">("camera");
   const [ratio, setRatio] = useState(16 / 9);
+  const [adding, setAdding] = useState(false);
+
+  // Corrections (tables added or removed, people marked as staff) are sent back to the
+  // server, which recomputes occupancy from the evidence it kept for this analysis.
+  const recompute = async (nextTables: Table[], marks: StaffMark[]) => {
+    if (!analysis?.id) return;
+    const body = { tables: nextTables.map(({ id, box, manual }) => ({ id, box, manual: !!manual })),
+      staff_tracks: staffTracks(analysis.objects ?? [], marks) };
+    const response = await fetch(`/analyze/${analysis.id}/recompute`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      setMessage(typeof error.detail === "string" ? error.detail : "Could not update the analysis.");
+      return;
+    }
+    const result = await response.json() as Pick<Analysis, "tables" | "timeline">;
+    setAnalysis((current) => current && current.id === analysis.id ? { ...current, tables: result.tables, timeline: result.timeline } : current);
+    setMessage("");
+  };
+  const updateMarks = (marks: StaffMark[]) => { setStaffMarks(marks); void recompute(analysis?.tables ?? [], marks); };
 
   useEffect(() => {
     setView(board ? "floor" : "camera");
@@ -60,6 +80,7 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
     setQueue([]);
     setAssigned({});
     setView("camera");
+    setAdding(false);
     setMessage("Analyzing the recording…");
     const form = new FormData();
     form.append("video", file);
@@ -74,7 +95,7 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
       .then((result) => {
         if (request.signal.aborted) return;
         setAnalysis(result);
-        setMessage(result.tables.length ? "" : "No tables detected. Try a clearer fixed-camera recording.");
+        setMessage(result.tables.length ? "" : "No tables were found automatically. Use “Add a missing table” and click each table in the video.");
       })
       .catch((error: Error) => {
         if (!request.signal.aborted) setMessage(error.message);
@@ -134,16 +155,19 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
       <button onClick={() => { videoRef.current?.pause(); setFile(undefined); setAnalysis(undefined); setUrl(""); onActive(false); }}>Close footage</button>
     </div>}
     {message && <p role="status">{message}</p>}
-    {analysis && tables.length > 0 && <div className="metrics">
+    {analysis && <div className="metrics">
       <div><strong>{tables.length}</strong><span>Tables</span></div>
       <div><strong>{occupied}</strong><span>Occupied</span></div>
       <div><strong>{tables.filter((table, i) => isReady(table, states[i])).length}</strong><span>Ready</span></div>
       <div><strong>{people}</strong><span>Estimated diners</span></div>
     </div>}
-    {tables.length > 0 && <nav className="views" aria-label="Recording view">
-      <button aria-pressed={view === "camera"} onClick={() => setView("camera")}>Camera</button>
-      <button aria-pressed={view === "floor"} onClick={() => setView("floor")}>2D floor plan</button>
+    {analysis && <nav className="views" aria-label="Recording view">
+      <button aria-pressed={view === "camera"} onClick={() => { setView("camera"); setAdding(false); }}>Camera</button>
+      <button aria-pressed={view === "floor"} onClick={() => { setView("floor"); setAdding(false); }}>2D floor plan</button>
+      {view === "camera" && <button className="add-table" aria-pressed={adding} onClick={() => { videoRef.current?.pause(); setAdding(!adding); }}>
+        {adding ? "Cancel adding" : "Add a missing table"}</button>}
     </nav>}
+    {adding && <p className="note" role="status">Click the middle of a table in the video. You can add several; press “Cancel adding” when done.</p>}
     <div className="workspace">
     <section>
     {url ? <div className={view === "camera" ? "camera" : "floor-view"} style={{ aspectRatio: ratio }}>
@@ -164,6 +188,20 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
           </button> : <span title={object.reason}>{object.label} · {Math.round(object.confidence * 100)}%</span>}
         </div>;
       })}
+      {adding && view === "camera" && <div className="add-table-layer" aria-label="Click a table to add it"
+        onClick={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const x = (event.clientX - bounds.left) / bounds.width, y = (event.clientY - bounds.top) / bounds.height;
+          // Size a new table like the ones already found; otherwise a typical four-top.
+          const sizes = tables.map(({ box }) => [box[2] - box[0], box[3] - box[1]]);
+          const middle = (values: number[], fallback: number) => values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : fallback;
+          const w = middle(sizes.map(([width]) => width), .16), h = middle(sizes.map(([, height]) => height), .2);
+          const clamp = (value: number) => Math.min(1, Math.max(0, value));
+          const box: Table["box"] = [clamp(x - w / 2), clamp(y - h / 2), clamp(x + w / 2), clamp(y + h / 2)];
+          const id = Math.max(0, ...tables.map((table) => table.id)) + 1;
+          void recompute([...tables, { id, x, y, box, manual: true }], staffMarks);
+          setSelected(id);
+        }} />}
       {tables.map((table, i) => {
         const reading = states[i];
         const state = reading?.state === "vacant" && assigned[table.id] === reading.since ? "assigned"
@@ -207,13 +245,13 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
     </div> : <div className="empty recording-empty"><div><span className="empty-orbit" aria-hidden="true">↗</span><p className="eyebrow">A NEW PERSPECTIVE ON SERVICE</p><h2>Your dining room. In focus.</h2><p>Choose a fixed-camera restaurant recording to begin.</p><div className="empty-steps"><span>01 Upload</span><span>02 Analyze</span><span>03 Explore the floor</span></div></div></div>}
     {analysis && <section className="ops-card staff-identification">
       <h2>Identify waiters</h2>
-      <p>Click a person’s label to pause and select them. Clothing color and nearby movement carry your mark forward; ambiguous crossings or gaps stop it.</p>
-      {personSelection && <button onClick={() => { setStaffMarks(current => [...current.filter(mark => mark.sample !== personSelection.sample || mark.object !== personSelection.object), personSelection]); setPersonSelection(undefined); }}>Mark selected person as waiter</button>}
-      {staffMarks.length > 0 && <button onClick={() => { setStaffMarks([]); setPersonSelection(undefined); }}>Clear waiter marks</button>}
+      <p>Click a person’s label to pause and select them, then mark them. The label follows that person through the recording, and they stop counting as a diner. If they are hidden for a long time or cross someone in the same uniform, the label stops rather than jump to the wrong person: mark them again.</p>
+      {personSelection && <button onClick={() => { updateMarks([...staffMarks.filter(mark => mark.sample !== personSelection.sample || mark.object !== personSelection.object), personSelection]); setPersonSelection(undefined); }}>Mark selected person as waiter</button>}
+      {staffMarks.length > 0 && <button onClick={() => { updateMarks([]); setPersonSelection(undefined); }}>Clear waiter marks</button>}
       <small>{staffMarks.length} manual marks · {Array.from(staffMatches).filter(key => key.startsWith(index + ":")).length} matched in this frame. Marks stay in this recording session only.</small>
-      <p className="note">This labels staff for review. Existing occupancy statistics are not recalculated by these marks yet.</p>
+      <p className="note">Marked staff are left out of table occupancy and diner counts for this recording.</p>
     </section>}
-    {view === "camera" && analysis && <p className="note">Detection boxes sampled about once per second. Guest/waiter labels are behavioral estimates, not verified roles. Uncertain people remain unclassified; cleanliness is not verified.</p>}
+    {view === "camera" && analysis && <p className="note">Detection boxes are shown about once per second; people are followed several times a second in between. Guest/waiter labels are behavioral estimates, not verified roles. Uncertain people remain unclassified; cleanliness is not verified.</p>}
     {view === "floor" && <p className="note">Drag tables to arrange the floor plan. Select a table to edit its number.</p>}
     {tables.length > 0 && <details open className="playback-statistics" data-playback-time={time}>
       <summary>Recording statistics · up to {clock(time)}</summary>
@@ -246,6 +284,8 @@ function CameraReview({ path, onActive }: { path: string; onActive: (active: boo
           onChange={(event) => setNames({ ...names, [active.id]: event.target.value })} /></label>
         <label>Seats<input type="number" min="1" max="100" value={capacity[active.id] ?? ""}
           onChange={(event) => setCapacity({ ...capacity, [active.id]: event.target.valueAsNumber || 0 })} /></label>
+        <button className="remove-table" onClick={() => { void recompute(tables.filter((table) => table.id !== active.id), staffMarks); setSelected(undefined); }}>
+          Remove this table{active.manual ? " (added by hand)" : " (not a real table)"}</button>
       </section>}
       <section aria-label="Staff alerts">
         <h2>Staff alerts</h2>

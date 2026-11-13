@@ -300,3 +300,9 @@ main { max-width: 1480px; }
 .footage-source { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px; background: #e2edf7; border: 1px solid #b7cde0; border-radius: 12px; margin-bottom: 16px; }
 .footage-source small { display: block; margin-top: 5px; color: #425c73; }
 .footage-source button { padding: 9px; border: 1px solid #abc2d7; border-radius: 8px; background: white; white-space: nowrap; }
+
+/* Manual table correction on the camera view */
+.add-table-layer { position: absolute; inset: 0; z-index: 5; cursor: crosshair; background: rgba(16, 109, 164, .12); outline: 3px dashed #106da4; outline-offset: -3px; }
+.views .add-table { margin-left: auto; }
+.views .add-table[aria-pressed="true"] { background: #106da4; color: #fff; }
+.remove-table { margin-top: 10px; background: #fff; color: #8a1c1c; border: 1px solid #e4b4b4; }

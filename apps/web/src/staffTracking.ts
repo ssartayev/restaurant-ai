@@ -1,32 +1,27 @@
-export type PersonObject = { box: [number, number, number, number]; kind: string; appearance?: number[] };
+// Waiter marks follow the server's person tracks (apps/api/app/tracking.py).
+// A mark names one detection; every detection on the same track, before and after,
+// carries the label. If the track is lost (long occlusion, identical uniforms crossing)
+// the label stops instead of jumping to someone else, and the person can be marked again.
+export type PersonObject = { box: [number, number, number, number]; kind: string; appearance?: number[]; track?: number };
 export type StaffMark = { sample: number; object: number };
-export function matchStaff(frames: [number, PersonObject[]][], marks: StaffMark[]) {
-  const matches = new Set<string>();
+
+/** Track numbers of everyone marked as staff. */
+export function staffTracks(frames: [number, PersonObject[]][], marks: StaffMark[]): number[] {
+  const tracks = new Set<number>();
   for (const mark of marks) {
     const seed = frames[mark.sample]?.[1][mark.object];
-    if (!seed || seed.kind !== "person" || !seed.appearance?.length) continue;
-    let previous = seed;
-    let seen = frames[mark.sample][0];
-    matches.add(mark.sample + ":" + mark.object);
-    for (let i = mark.sample + 1; i < frames.length; i++) {
-      const [at, objects] = frames[i];
-      if (at - seen > 3) break;
-      const candidates = objects.flatMap((person, j) => {
-        if (person.kind !== "person" || !person.appearance?.length) return [];
-        const a = person.box, b = previous.box;
-        const distance = Math.hypot((a[0]+a[2]-b[0]-b[2])/2, (a[1]+a[3]-b[1]-b[3])/2) / Math.max(.05, b[3]-b[1]);
-        const similarity = seed.appearance!.reduce((sum, value, k) => sum + Math.min(value, person.appearance![k] ?? 0), 0);
-        if (distance > .65 || similarity < .65) return [];
-        return [{ j, person, score: similarity - .35 * distance }];
-      }).sort((a,b) => b.score-a.score);
-      if (!candidates.length) continue;
-      // Same uniforms/crossings must not silently transfer the manual label.
-      if (candidates[1] && candidates[0].score - candidates[1].score < .12) break;
-      const best = candidates[0];
-      matches.add(i + ":" + best.j);
-      previous = best.person;
-      seen = at;
-    }
+    if (seed?.kind === "person" && seed.track !== undefined) tracks.add(seed.track);
   }
+  return [...tracks].sort((a, b) => a - b);
+}
+
+/** Keys "sample:object" of every detection that belongs to a marked person. */
+export function matchStaff(frames: [number, PersonObject[]][], marks: StaffMark[]) {
+  const matches = new Set<string>();
+  const tracks = new Set(staffTracks(frames, marks));
+  frames.forEach(([, objects], i) => objects.forEach((object, j) => {
+    if (object.kind === "person" && object.track !== undefined && tracks.has(object.track)) matches.add(i + ":" + j);
+  }));
+  for (const mark of marks) matches.add(mark.sample + ":" + mark.object);
   return matches;
 }
