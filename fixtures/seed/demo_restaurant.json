@@ -1,0 +1,142 @@
+{
+  "name": "Demo Bistro",
+  "timezone": "UTC",
+  "users": [
+    {
+      "email": "admin@demo.test",
+      "name": "Aigerim (admin)",
+      "role": "admin",
+      "password": "demo-admin"
+    },
+    {
+      "email": "host@demo.test",
+      "name": "Dana (host)",
+      "role": "host",
+      "password": "demo-host"
+    },
+    {
+      "email": "staff@demo.test",
+      "name": "Timur (staff)",
+      "role": "staff",
+      "password": "demo-staff"
+    }
+  ],
+  "camera": {
+    "name": "Main room"
+  },
+  "tables": [
+    {
+      "label": "T1",
+      "capacity": 2,
+      "x": 0.1,
+      "y": 0.15,
+      "state": "occupied"
+    },
+    {
+      "label": "T2",
+      "capacity": 2,
+      "x": 0.3,
+      "y": 0.15,
+      "state": "ready"
+    },
+    {
+      "label": "T3",
+      "capacity": 2,
+      "x": 0.5,
+      "y": 0.15,
+      "state": "occupied"
+    },
+    {
+      "label": "T4",
+      "capacity": 4,
+      "x": 0.7,
+      "y": 0.15,
+      "state": "occupied"
+    },
+    {
+      "label": "T5",
+      "capacity": 4,
+      "x": 0.1,
+      "y": 0.45,
+      "state": "needs_clearing"
+    },
+    {
+      "label": "T6",
+      "capacity": 4,
+      "x": 0.3,
+      "y": 0.45,
+      "state": "occupied"
+    },
+    {
+      "label": "T7",
+      "capacity": 4,
+      "x": 0.5,
+      "y": 0.45,
+      "state": "occupied"
+    },
+    {
+      "label": "T8",
+      "capacity": 4,
+      "x": 0.7,
+      "y": 0.45,
+      "state": "occupied"
+    },
+    {
+      "label": "T9",
+      "capacity": 6,
+      "x": 0.1,
+      "y": 0.75,
+      "state": "occupied"
+    },
+    {
+      "label": "T10",
+      "capacity": 6,
+      "x": 0.3,
+      "y": 0.75,
+      "state": "occupied"
+    },
+    {
+      "label": "T11",
+      "capacity": 8,
+      "x": 0.5,
+      "y": 0.75,
+      "min_party": 5,
+      "state": "occupied"
+    },
+    {
+      "label": "T12",
+      "capacity": 2,
+      "x": 0.7,
+      "y": 0.75,
+      "state": "occupied"
+    }
+  ],
+  "waitlist": [
+    {
+      "name": "Kim",
+      "party_size": 4,
+      "arrived_min_ago": 25
+    },
+    {
+      "name": "Lee",
+      "party_size": 2,
+      "arrived_min_ago": 20
+    },
+    {
+      "name": "Okafor",
+      "party_size": 6,
+      "arrived_min_ago": 15
+    },
+    {
+      "name": "Garcia",
+      "party_size": 3,
+      "arrived_min_ago": 9
+    },
+    {
+      "name": "Nowak",
+      "party_size": 2,
+      "arrived_min_ago": 4
+    }
+  ],
+  "history_days": 7
+}

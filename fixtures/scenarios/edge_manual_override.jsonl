@@ -1,0 +1,8 @@
+{"t": 0, "do": "staff", "table": "T2", "command": "mark_occupied", "as": "staff", "note": "Camera missed a party; staff correct it"}
+{"t": 0, "do": "expect", "table": "T2", "state": "occupied", "manual_hold": true}
+{"t": 1, "do": "camera", "table": "T2", "occupied": false, "note": "Camera still disagrees"}
+{"t": 1, "do": "expect", "table": "T2", "state": "occupied", "manual_hold": true, "last_result": "ignored_manual_hold"}
+{"t": 2, "do": "camera", "table": "T2", "occupied": true, "note": "Camera now agrees"}
+{"t": 2, "do": "expect", "table": "T2", "state": "occupied", "manual_hold": false, "last_result": "hold_released"}
+{"t": 3, "do": "camera", "table": "T2", "occupied": false, "note": "Later the party leaves"}
+{"t": 3, "do": "expect", "table": "T2", "state": "needs_clearing", "open_alerts": 1, "last_result": "applied"}

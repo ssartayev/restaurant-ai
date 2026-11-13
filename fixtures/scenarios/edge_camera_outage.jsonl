@@ -1,0 +1,13 @@
+{"t": 0, "do": "camera_offline", "note": "Camera loses power"}
+{"t": 1, "do": "camera", "table": "T7", "occupied": false}
+{"t": 1, "do": "expect", "table": "T7", "state": "occupied", "last_result": "ignored_camera_offline", "camera_status": "offline"}
+{"t": 2, "do": "staff", "table": "T7", "command": "mark_needs_clearing", "as": "staff", "note": "Staff run the floor by hand"}
+{"t": 3, "do": "staff", "table": "T7", "command": "mark_ready", "as": "staff"}
+{"t": 3, "do": "expect", "table": "T7", "state": "ready"}
+{"t": 4, "do": "camera_online", "note": "Camera returns: every table is held"}
+{"t": 4, "do": "expect", "table": "T1", "state": "occupied", "manual_hold": true, "camera_status": "online"}
+{"t": 5, "do": "heartbeat", "zones": "agree", "note": "Snapshot agrees with the floor: holds released, nothing flips"}
+{"t": 5, "do": "expect", "table": "T1", "state": "occupied", "manual_hold": false}
+{"t": 5, "do": "expect", "table": "T7", "state": "ready", "manual_hold": false}
+{"t": 6, "do": "camera", "table": "T7", "occupied": true}
+{"t": 6, "do": "expect", "table": "T7", "state": "occupied", "last_result": "applied"}

@@ -1,0 +1,59 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e "apps/api[dev]"
+      - run: python -m pytest apps/api -q --junitxml=api-results.xml
+      - name: Tenant isolation (requirement R6)
+        run: python -m pytest apps/api/tests/test_tenancy.py -q
+      - name: API contract is committed and current
+        run: |
+          cd apps/api && SEED_DEV=0 python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=1))" > /tmp/openapi.json
+          diff -q /tmp/openapi.json ../../packages/contracts/openapi.json || (echo "Run 'make openapi' and commit the result" && exit 1)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: api-test-results, path: api-results.xml }
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e "apps/worker[dev]" numpy
+      - run: cd apps/worker && python -m pytest -q
+      - name: CV evaluation report (held-out split)
+        run: cd apps/worker && python -m worker.evaluate --manifest ../../eval/manifest.json --split heldout --out ../../eval/report.md
+      - run: cat eval/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with: { name: cv-eval-report, path: eval/report.md }
+
+  web-and-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: pip install -e "apps/api[dev]"
+      - run: cd apps/web && npm ci --no-audit --no-fund && npm run build
+      - run: cd e2e && npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Browser end-to-end (hosted-demo acceptance path)
+        run: |
+          DATABASE_URL=sqlite:////tmp/e2e.db SEED_DEV=0 python -m uvicorn app.main:app --app-dir apps/api --port 8010 --log-level warning &
+          sleep 4
+          cd e2e && BASE_URL=http://localhost:8010 node golden.cjs
+      - run: cat e2e/artifacts/results.md >> "$GITHUB_STEP_SUMMARY"
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: e2e-artifacts, path: e2e/artifacts }

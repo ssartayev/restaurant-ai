@@ -1,0 +1,3 @@
+{"t": 0, "do": "camera_offline", "note": "The camera goes offline. Run the floor with the manual controls."}
+{"t": 30, "do": "camera_online", "note": "The camera is back. Tables stay on Manual until the camera agrees."}
+{"t": 34, "do": "heartbeat", "zones": "agree", "note": "Camera snapshot agrees with the floor. Automation resumes."}

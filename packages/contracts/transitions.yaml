@@ -1,0 +1,53 @@
+# Table state machine contract. Source of truth for apps/api/app/state_machine.py.
+# apps/api/tests/test_state_machine.py checks every row below against the code.
+#
+# States: ready | occupied | needs_clearing
+# The camera can only cause  ready -> occupied  and  occupied -> needs_clearing.
+# Only a person can make a table ready.
+
+states: [ready, occupied, needs_clearing]
+
+# Camera observations when the table has NO manual hold.
+# result: the reason string returned by the ingest API.
+camera:
+  - {state: ready,          occupied: true,  to: occupied,       result: applied}
+  - {state: ready,          occupied: false, to: ready,          result: ignored_state}
+  - {state: occupied,       occupied: true,  to: occupied,       result: ignored_state}
+  - {state: occupied,       occupied: false, to: needs_clearing, result: applied}
+  - {state: needs_clearing, occupied: true,  to: needs_clearing, result: ignored_state}
+  - {state: needs_clearing, occupied: false, to: needs_clearing, result: ignored_state}
+
+# Camera observations when the table HAS a manual hold (set by any staff action,
+# or by a camera coming back from an outage). State never changes while held.
+# releases_hold: the observation agrees with the current state, so the hold ends
+# and the NEXT camera change applies normally.
+camera_held:
+  - {state: ready,          occupied: true,  releases_hold: false, result: ignored_manual_hold}
+  - {state: ready,          occupied: false, releases_hold: true,  result: hold_released}
+  - {state: occupied,       occupied: true,  releases_hold: true,  result: hold_released}
+  - {state: occupied,       occupied: false, releases_hold: false, result: ignored_manual_hold}
+  - {state: needs_clearing, occupied: true,  releases_hold: false, result: ignored_manual_hold}
+  - {state: needs_clearing, occupied: false, releases_hold: true,  result: hold_released}
+
+# Guards evaluated before the tables above, in this order. First match wins.
+camera_guards:
+  - {when: automation_off,                         result: ignored_automation_off}
+  - {when: camera_offline,                         result: ignored_camera_offline}
+  - {when: observed_more_than_120s_ago,            result: ignored_stale}
+  - {when: observed_before_last_applied_camera,    result: ignored_stale}
+  - {when: observed_at_or_before_last_staff_action, result: ignored_manual_hold}
+
+# Staff commands. Every command that changes state sets the manual hold.
+# A command whose target equals the current state is a no-op (HTTP 200, no event).
+staff:
+  - {command: mark_occupied,       to: occupied,       sets_hold: true}
+  - {command: mark_needs_clearing, to: needs_clearing, sets_hold: true}
+  - {command: mark_ready,          to: ready,          sets_hold: true}
+  - {command: resume_camera,       to: same,           sets_hold: false, clears_hold: true}
+  - {command: mark_greeted,        to: same,           sets_hold: false}
+
+# Side effects of entering a state (regardless of who caused it).
+on_enter:
+  occupied:       [resolve_clearing_alert, clear_greeted, start_greet_timer]
+  needs_clearing: [open_clearing_alert, resolve_greet_alert]
+  ready:          [resolve_all_alerts, clear_party, recompute_suggestions]

@@ -1,0 +1,6 @@
+{
+  "name": "restaurant-ai-e2e",
+  "private": true,
+  "scripts": { "test": "node golden.cjs" },
+  "devDependencies": { "playwright": "^1.47.0" }
+}

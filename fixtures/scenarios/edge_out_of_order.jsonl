@@ -1,0 +1,5 @@
+{"t": 0, "do": "camera", "table": "T2", "occupied": true}
+{"t": 1, "do": "camera", "table": "T2", "occupied": false, "observed_offset_s": -30, "note": "Older observation arrives late"}
+{"t": 1, "do": "expect", "table": "T2", "state": "occupied", "last_result": "ignored_stale"}
+{"t": 2, "do": "camera", "table": "T2", "occupied": false, "observed_offset_s": -600, "note": "Queued for 10 minutes during a network cut"}
+{"t": 2, "do": "expect", "table": "T2", "state": "occupied", "last_result": "ignored_stale"}

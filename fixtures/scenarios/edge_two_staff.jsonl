@@ -1,0 +1,6 @@
+{"t": 0, "do": "staff", "table": "T5", "command": "mark_ready", "as": "staff"}
+{"t": 0, "do": "expect", "table": "T5", "state": "ready"}
+{"t": 1, "do": "staff", "table": "T5", "command": "mark_ready", "as": "host", "stale_version": true, "note": "Second tap for the same target: no-op, no duplicate event"}
+{"t": 1, "do": "expect", "table": "T5", "state": "ready", "last_result": "no_change"}
+{"t": 2, "do": "staff", "table": "T5", "command": "mark_occupied", "as": "host", "stale_version": true, "note": "Stale tap for a different target: conflict"}
+{"t": 2, "do": "expect", "table": "T5", "state": "ready", "last_result": "conflict"}

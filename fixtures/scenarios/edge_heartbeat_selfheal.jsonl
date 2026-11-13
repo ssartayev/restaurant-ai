@@ -1,0 +1,2 @@
+{"t": 0, "do": "heartbeat", "zones": {"T2": true}, "note": "The occupancy event for T2 was lost; the snapshot repairs it"}
+{"t": 0, "do": "expect", "table": "T2", "state": "occupied"}

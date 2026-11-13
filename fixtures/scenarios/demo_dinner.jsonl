@@ -1,0 +1,7 @@
+{"t": 0, "do": "note", "note": "Evening service. T7 is finishing; Kim (4) has waited longest."}
+{"t": 4, "do": "camera", "table": "T2", "occupied": true, "note": "A walk-in couple sits at T2. The camera marks it Occupied."}
+{"t": 10, "do": "note", "note": "A guest at T7 stands to take a photo. Under 75 s, so nothing changes."}
+{"t": 18, "do": "camera", "table": "T7", "occupied": false, "note": "The party at T7 leaves. Acknowledge the alert, mark it Ready, then seat Kim."}
+{"t": 40, "do": "camera", "table": "T4", "occupied": false, "note": "T4 leaves. Another table needs clearing."}
+{"t": 60, "do": "camera", "table": "T12", "occupied": false, "note": "T12 leaves. Lee (2) or Nowak (2) can take it once it is Ready."}
+{"t": 64, "do": "note", "note": "Scenario finished. Reset to run it again."}

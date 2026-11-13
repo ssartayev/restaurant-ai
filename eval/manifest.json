@@ -1,0 +1,15 @@
+{
+  "note": "Synthetic sessions only. Replace with labelled recordings: kind \"trace\" entries point at a box trace exported by `python -m worker.runner --video ... --save-trace` plus a labels file. Split is assigned per recording SESSION before any tuning and must not change afterwards.",
+  "sessions": [
+    {"id": "syn-dev-01", "kind": "synthetic", "seed": 101, "split": "dev", "tags": []},
+    {"id": "syn-dev-02", "kind": "synthetic", "seed": 102, "split": "dev", "tags": ["staff_pass", "brief_stand"]},
+    {"id": "syn-dev-03", "kind": "synthetic", "seed": 103, "split": "dev", "tags": ["clearing", "low_light"]},
+    {"id": "syn-dev-04", "kind": "synthetic", "seed": 104, "split": "dev", "tags": ["solo_absence", "table_setting"]},
+    {"id": "syn-held-01", "kind": "synthetic", "seed": 201, "split": "heldout", "tags": []},
+    {"id": "syn-held-02", "kind": "synthetic", "seed": 202, "split": "heldout", "tags": ["staff_pass", "brief_stand"]},
+    {"id": "syn-held-03", "kind": "synthetic", "seed": 203, "split": "heldout", "tags": ["clearing"]},
+    {"id": "syn-held-04", "kind": "synthetic", "seed": 204, "split": "heldout", "tags": ["low_light"]},
+    {"id": "syn-held-05", "kind": "synthetic", "seed": 205, "split": "heldout", "tags": ["solo_absence"]},
+    {"id": "syn-held-06", "kind": "synthetic", "seed": 206, "split": "heldout", "tags": ["table_setting"]}
+  ]
+}

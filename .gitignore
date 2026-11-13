@@ -1,0 +1,15 @@
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dev.db*
+.dev-device-token
+apps/web/dist/
+e2e/artifacts/
+queue.db
+*.onnx
+*.mp4
+.env
+restaurant-ai.zip

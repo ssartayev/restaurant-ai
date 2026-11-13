@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "heartbeat.v1",
+  "title": "camera.heartbeat v1",
+  "description": "Sent every 15 s. Carries the current occupancy of every zone so missed events self-heal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "type", "sent_at", "zones"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "type": {"const": "camera.heartbeat"},
+    "camera_id": {"type": "string"},
+    "sequence": {"type": "integer", "minimum": 0},
+    "sent_at": {"type": "string", "format": "date-time"},
+    "health": {"enum": ["ok", "degraded"]},
+    "health_reason": {"type": "string", "maxLength": 200},
+    "worker_version": {"type": "string"},
+    "zones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["table_id", "occupied"],
+        "properties": {
+          "table_id": {"type": "string"},
+          "occupied": {"type": "boolean"},
+          "since": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  }
+}

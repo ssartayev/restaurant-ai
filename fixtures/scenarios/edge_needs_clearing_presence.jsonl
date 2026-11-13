@@ -1,0 +1,5 @@
+{"t": 0, "do": "expect", "table": "T5", "state": "needs_clearing", "open_alerts": 1}
+{"t": 1, "do": "camera", "table": "T5", "occupied": true, "note": "Staff clearing the table look like guests"}
+{"t": 1, "do": "expect", "table": "T5", "state": "needs_clearing", "open_alerts": 1, "last_result": "ignored_state"}
+{"t": 2, "do": "camera", "table": "T5", "occupied": false}
+{"t": 2, "do": "expect", "table": "T5", "state": "needs_clearing", "open_alerts": 1, "last_result": "ignored_state"}

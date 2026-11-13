@@ -1,0 +1,16 @@
+{"t": 0, "do": "expect", "table": "T7", "state": "occupied", "note": "Seed: T7 occupied, T2 ready, Kim (4) and Lee (2) waiting"}
+{"t": 2, "do": "camera", "table": "T2", "occupied": true, "note": "A walk-in couple sits at T2"}
+{"t": 2, "do": "expect", "table": "T2", "state": "occupied", "last_result": "applied"}
+{"t": 5, "do": "camera", "table": "T7", "occupied": false, "event_id": "evt_t7_departure_1", "note": "The party at T7 leaves"}
+{"t": 5, "do": "expect", "table": "T7", "state": "needs_clearing", "open_alerts": 1, "last_result": "applied"}
+{"t": 6, "do": "camera", "table": "T7", "occupied": false, "event_id": "evt_t7_departure_1", "note": "The same event is delivered again"}
+{"t": 6, "do": "expect", "table": "T7", "state": "needs_clearing", "open_alerts": 1, "last_result": "duplicate"}
+{"t": 8, "do": "ack", "table": "T7", "as": "staff", "note": "Staff acknowledge the alert"}
+{"t": 8, "do": "expect", "table": "T7", "alert_status": "acknowledged"}
+{"t": 10, "do": "staff", "table": "T7", "command": "mark_ready", "as": "staff", "note": "Staff reset the table and mark it Ready"}
+{"t": 10, "do": "expect", "table": "T7", "state": "ready", "open_alerts": 0, "suggestion": "Kim", "manual_hold": true}
+{"t": 12, "do": "seat", "table": "T7", "party": "Kim", "as": "host", "note": "Host confirms the suggestion"}
+{"t": 12, "do": "expect", "table": "T7", "state": "occupied", "manual_hold": true, "party_status": {"Kim": "seated", "Lee": "waiting"}}
+{"t": 14, "do": "camera", "table": "T7", "occupied": true, "note": "Camera sees the new party: agrees, hold released"}
+{"t": 14, "do": "expect", "table": "T7", "state": "occupied", "manual_hold": false, "last_result": "hold_released"}
+{"t": 16, "do": "expect", "table": "T7", "suggestion": null}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "occupancy-changed.v1",
+  "title": "occupancy.changed v1",
+  "description": "Table-level occupancy change emitted by the vision worker. No field may carry an image, a track ID or anything about an individual.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "type", "table_id", "occupied", "observed_at"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "event_id": {"type": "string", "minLength": 8, "maxLength": 64},
+    "type": {"const": "occupancy.changed"},
+    "restaurant_id": {"type": "string"},
+    "camera_id": {"type": "string"},
+    "table_id": {"type": "string"},
+    "occupied": {"type": "boolean"},
+    "person_count": {"type": "integer", "minimum": 0},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "window_s": {"type": "number", "minimum": 0},
+    "sequence": {"type": "integer", "minimum": 0},
+    "worker_version": {"type": "string"},
+    "config_version": {"type": "integer", "minimum": 0}
+  }
+}
