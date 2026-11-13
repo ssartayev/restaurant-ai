@@ -4,6 +4,8 @@ from functools import lru_cache
 from pathlib import Path
 from statistics import median_low
 from tempfile import TemporaryDirectory
+from .roles import RoleEstimator
+
 import os
 
 import cv2
@@ -50,6 +52,7 @@ def analyze(path, pose_model=None):
         samples, candidates, dish_samples, objects = [], [], [], []
         pose = Pose(pose_model or ROOT / ".models/pose_landmarker_lite.task")
         lookup = model.np.array([round(255 * (v / 255) ** .66) for v in range(256)], dtype="uint8")
+        roles = RoleEstimator()
         index = 0
         while capture.grab():
             if index % step == 0:
@@ -72,15 +75,19 @@ def analyze(path, pose_model=None):
                     for box in detected[category]:
                         add_object(box, label, "tableware")
                 people = []
+                person_evidence = []
                 for box in detected[PERSON]:
                     if box.conf < .35:
                         continue
                     seated = pose.seated(frame, box, detected[TABLE])
-                    add_object(box, "Seated person" if seated is True else "Person", "person")
+                    person_evidence.append((box, seated, pose.service_motion))
                     width = (box.x2 - box.x1) * frame.shape[1]
                     height = (box.y2 - box.y1) * frame.shape[0]
                     if seated is True or (seated is None and height <= 1.85 * width):
                         people.append(anchor_point(box, ay=.65))
+                for (box, _, _), (label, reason) in zip(person_evidence, roles.update(index / fps, person_evidence)):
+                    add_object(box, label, "person")
+                    frame_objects[-1]["reason"] = reason
                 samples.append((index / fps, people))
                 objects.append((index / fps, frame_objects))
                 matched = set()

@@ -190,3 +190,51 @@ This page has no live video player or visual zone drawing yet. A real camera ins
 Latest verification after blue palette and object overlays: `make test` passed (66 API, 22 worker, TypeScript); `CCTV_TEST_VIDEO="$HOME/Downloads/Cctv-Resturant-Demo.mp4" make e2e` passed, including newly added assertions that object rectangles appear in Camera and are absent from the 2D floor plan. Six tables appeared in both views. `git diff --check` passed. This validates workflow, not role-classification accuracy or live streaming.
 
 Overlay placement regression fixed: a broad text replacement had duplicated object rendering inside Staff alerts, positioning a second set against the page. Removed that duplicate. Browser coverage now asserts every object box belongs to the camera and its bounds remain within the video. Verified with the actual CCTV upload and a full-page screenshot (zero boxes outside camera). `make test` passed (66 API, 22 worker, TypeScript); CCTV `make e2e` passed. This is a rendering fix, not a change in detector accuracy.
+
+## Role estimation experiment: not a solved waiter classifier
+
+Recording-local roles now use short geometric associations and a ten-second behavior window. Repeated seated poses suggest Likely guest; repeated reaching across a table with no seated evidence suggests Possible waiter. Ambiguous matches and gaps reset evidence. Walking alone remains role uncertain. Association IDs never leave the estimator. This is a heuristic on existing models, not a trained role classifier; live occupancy is unchanged.
+
+Four-video results below count person-samples, not unique people. They are processing checks without role ground truth, not accuracy scores.
+[
+  {
+    "file": "Cctv-Resturant-Demo.mp4",
+    "seconds": 5.48,
+    "tables": 6,
+    "samples": 44,
+    "person_sample_labels": {
+      "Person \u00b7 role uncertain": 175,
+      "Likely guest": 18
+    }
+  },
+  {
+    "file": "restaurant-39890727.mp4",
+    "seconds": 1.1,
+    "tables": 0,
+    "samples": 7,
+    "person_sample_labels": {
+      "Person \u00b7 role uncertain": 40
+    }
+  },
+  {
+    "file": "restaurant-4821100.mp4",
+    "seconds": 2.02,
+    "tables": 1,
+    "samples": 9,
+    "person_sample_labels": {
+      "Person \u00b7 role uncertain": 51,
+      "Possible waiter": 6
+    }
+  },
+  {
+    "file": "restaurant-5001580.mp4",
+    "seconds": 2.29,
+    "tables": 2,
+    "samples": 13,
+    "person_sample_labels": {
+      "Person \u00b7 role uncertain": 58
+    }
+  }
+]
+
+The original clip produces no waiter estimates: staff recall remains inadequate. Possible waiter labels in the overhead clip need manual verification and may include guests reaching. The busy clip detects no tables. Do not claim generalization. Next: annotate consented staff/guest/unknown tracks and actions across restaurants; split validation by restaurant, include standing guests and seated staff, and train/evaluate a role classifier alongside optional service-zone calibration. No training was performed. Research: https://docs.ultralytics.com/tasks/pose/ and https://docs.ultralytics.com/modes/track/ provide keypoints/tracking, not waiter classes. https://arxiv.org/abs/2403.05092 discusses adapting table-service models with local restaurant data.

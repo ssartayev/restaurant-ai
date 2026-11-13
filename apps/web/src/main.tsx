@@ -5,7 +5,7 @@ import { Navigation, Operations } from "./Operations";
 
 type Table = { id: number; x: number; y: number; box: [number, number, number, number] };
 type Reading = { tableware_count?: number; state: string; people: number; since: number };
-type ObjectDetection = { box: [number, number, number, number]; label: string; kind: string; confidence: number };
+type ObjectDetection = { box: [number, number, number, number]; label: string; kind: string; confidence: number; reason?: string };
 type Analysis = { tables: Table[]; timeline: [number, Reading[]][]; objects?: [number, ObjectDetection[]][] };
 
 function clock(seconds: number) {
@@ -137,7 +137,7 @@ function CameraReview() {
         const [left, top, right, bottom] = object.box;
         return <div className="object-box" data-kind={object.kind} key={objectIndex}
           style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${(right-left)*100}%`, height: `${(bottom-top)*100}%` }}>
-          <span>{object.label} · {Math.round(object.confidence * 100)}%</span>
+          <span title={object.reason}>{object.label}{object.kind !== "person" && ` · ${Math.round(object.confidence * 100)}%`}</span>
         </div>;
       })}
       {tables.map((table, i) => {
@@ -181,7 +181,7 @@ function CameraReview() {
         </button>;
       })}
     </div> : <div className="empty recording-empty"><div><span className="empty-orbit" aria-hidden="true">↗</span><p className="eyebrow">A NEW PERSPECTIVE ON SERVICE</p><h2>Your dining room. In focus.</h2><p>Choose a fixed-camera restaurant recording to begin.</p><div className="empty-steps"><span>01 Upload</span><span>02 Analyze</span><span>03 Explore the floor</span></div></div></div>}
-    {view === "camera" && analysis && <p className="note">Detection boxes sampled about once per second. “Seated person” is a pose estimate, not a confirmed client. Waiter roles and cleanliness are not verified by this model.</p>}
+    {view === "camera" && analysis && <p className="note">Detection boxes sampled about once per second. Guest/waiter labels are behavioral estimates, not verified roles. Uncertain people remain unclassified; cleanliness is not verified.</p>}
     {view === "floor" && <p className="note">Drag tables to arrange the floor plan. Select a table to edit its number.</p>}
     {tables.length > 0 && <details>
       <summary>Recording statistics</summary>

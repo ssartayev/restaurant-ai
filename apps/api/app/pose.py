@@ -14,6 +14,7 @@ class Pose:
         self.model = mp.tasks.vision.PoseLandmarker.create_from_options(options)
 
     def seated(self, frame, box, tables):
+        self.service_motion = False
         height, width = frame.shape[:2]
         margin = .12 * (box.y2 - box.y1)
         left = int(max(0, box.x1 - margin) * width)
@@ -41,6 +42,7 @@ class Pose:
                     if wrist.visibility >= .5 and any(
                         table.x1 <= x <= table.x2 and table.y1 <= y <= table.y2 for table in tables
                     ):
+                        self.service_motion = True
                         return False
         landmarks = result.pose_world_landmarks[0]
         angles = []
