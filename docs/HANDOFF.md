@@ -3,7 +3,7 @@
 ## Read this first
 
 - Snapshot date: 13 November 2026, Hong Kong.
-- Base commit: `c8c9f7dbc2663c4faa23c0164da30568c0fc001f` (the original restaurant management service). Working branch: `codex/simplify-floor`. The implementation is committed through `5d35950`. Use `git diff c8c9f7d..HEAD --stat` for committed changes and `git status --short` for later work. The last push attempt failed because GitHub authentication was unavailable; a local commit does not mean collaborators can fetch it.
+- Base commit: `c8c9f7dbc2663c4faa23c0164da30568c0fc001f` (the original restaurant management service). Working branch: `codex/simplify-floor`. Use `git diff c8c9f7d..HEAD --stat` for committed changes and `git status --short` for later work.
 - The app is a local prototype with a working order-to-kitchen loop, recorded-video analysis, and an RTSP edge ingestion path. It needs an on-site vision and operational pilot before production use.
 - The baseline `AGENTS.md` explains tenant rules, state-machine behavior, and original engineering decisions. Its original web file map, port, test counts, and some verification statements describe the base commit. The run instructions and source map below describe the current branch.
 - The Instagram reference shows camera overlays, service reminders, clearing and turnover, a waiting queue, and peak-time reporting. The prototype covers parts of that workflow. It has no browser feed for a physical live camera, verified waiter recognition, or cross-shift forecasting.
@@ -66,7 +66,7 @@ Local database history: SQLite `dev.db` is retained. PostgreSQL 17 was installed
 
 - Latest implementation verification: `make test` passed 69 API tests on SQLite, 22 worker tests, and the web type-check. A Starlette test-client deprecation warning remains.
 - `TEST_DATABASE_URL=… make test-api` passed 66 API tests using an isolated PostgreSQL 17 database. The operational database was outside this test.
-- `CCTV_TEST_VIDEO=/path/to/Cctv-Resturant-Demo.mp4 make e2e` passed invalid upload handling, real CCTV analysis, floor/camera table parity, dragging, renaming, kitchen ticket lifecycle, History heatmap, saved weekly shortcut across reload, and the mobile composer. Install the browser with `cd e2e && npm install && npx playwright install chromium` if needed. The Gemini response integration was tested with a stub in the API suite. No live Gemini request was verified.
+- `CCTV_TEST_VIDEO=/path/to/Cctv-Resturant-Demo.mp4 make e2e` passed invalid upload handling, real CCTV analysis, floor/camera table parity, dragging, renaming, kitchen ticket lifecycle, History heatmap, saved weekly shortcut across reload, and the mobile composer. Install the browser with `cd e2e && npm install && npx playwright install chromium` if needed. The Gemini response integration was tested with a stub in the API suite. A later check verified a real free-form Gemini reply through the running Assistant endpoint on port 8003.
 - Desktop screenshots of the Live board, History, and a saved Monthly summary were inspected in Chromium. The monthly summary also wrote to the PostgreSQL-backed local app through a temporary demo tenant. No permanent screenshot artifacts are required to build.
 - An earlier pass sent real-frame YOLOX tableware evidence through the edge agent to the PostgreSQL-backed live board. This establishes the transport path. It does not validate an actual physical RTSP feed over a full shift.
 - The original `make cv-eval` exercises synthetic traces and reports the baseline zone/filter metrics. It does not evaluate the recording pose model or tableware class accuracy.
@@ -292,7 +292,7 @@ Remaining: true live RTSP browser video, automatic live layout calibration, and 
 
 ## Implementation commit index
 
-All IDs below are local commits on codex/simplify-floor. Remote publication remains unverified.
+The commits below record the implementation history of `codex/simplify-floor`.
 
 | Commit | Included work |
 |---|---|
@@ -315,3 +315,11 @@ All IDs below are local commits on codex/simplify-floor. Remote publication rema
 - **Changes missing on GitHub:** authenticate Git and push codex/simplify-floor. Do not merge into main or claim CI passed without checking the remote.
 
 This documentation update changes no runtime code. The latest preceding implementation checks were 69 API tests, 22 worker tests, TypeScript, and the CCTV browser workflow, including shared board names/layout and paused playback preservation. Documentation-only verification: diff whitespace and Markdown heading/link review.
+
+## Assistant setup and reliability update
+
+Set `GEMINI_API_KEY` in the backend environment and set `GEMINI_MODEL=gemini-3.1-flash-lite`. Keep the key out of Git. Restart the local server from that environment with `make dev VIDEO_PORT=8003`, open [Assistant](http://localhost:8003/assistant) as an admin, and type a new question to verify Gemini. Summary shortcuts, basic Mise overview questions, and peak arrival questions can answer directly from application information or the selected report.
+
+The backend uses a trusted certificate bundle and tries another Gemini model on transient failures. Free-form requests can still fail if Google is unavailable or rejects the request. The Assistant clears the composer on Send and restores the draft if saving could not be confirmed. Saved questions remain in history even when generation fails.
+
+Verified locally with `make test`, `make e2e`, and a real free-form Gemini reply through the running chat endpoint. The user confirmed the Assistant works.

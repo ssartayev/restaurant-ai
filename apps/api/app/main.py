@@ -585,9 +585,11 @@ def restaurant_report_chat(body: ReportQuestion, ctx: Ctx = Depends(member("admi
     db.commit()
     try:
         response = (report_chat.summarize(report) if body.mode == "summary"
-                    else report_chat.answer(body.question, report))
+                    else (report_chat.overview_answer(body.question)
+                          or report_chat.peak_answer(body.question, report)
+                          or report_chat.answer(body.question, report)))
     except report_chat.ChatUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
+        raise HTTPException(503, str(exc), headers={"X-Mise-Question-Saved": "1"}) from exc
     exchange.answer = response
     db.commit()
     return {"id": exchange.id, "answer": response, "report": report}

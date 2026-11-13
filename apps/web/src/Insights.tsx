@@ -12,7 +12,11 @@ export async function request<T>(path: string, method = "GET", body?: object): P
     method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body),
   });
   const result = await response.json();
-  if (!response.ok) throw Error(typeof result.detail === "string" ? result.detail : "Request failed.");
+  if (!response.ok) {
+    throw Object.assign(new Error(typeof result.detail === "string" ? result.detail : "Request failed."), {
+      questionSaved: response.headers.get("X-Mise-Question-Saved") === "1",
+    });
+  }
   return result;
 }
 
@@ -148,15 +152,17 @@ export function Assistant({ root }: { root: string }) {
     }
     inFlight.current = true;
     setPending(question.trim());
+    if (mode === "question") setDraft("");
     setError("");
     try {
       await request(root + "/analytics/chat", "POST", {
         question: question.trim(), period: selectedPeriod, mode,
         ...(selectedPeriod === "custom" ? { start: new Date(from).toISOString(), end: new Date(to).toISOString() } : {}),
       });
-      setDraft("");
     } catch (err) {
-      setError((err as Error).message);
+      const failure = err as Error & { questionSaved?: boolean };
+      if (mode === "question" && !failure.questionSaved) setDraft(current => current || question);
+      setError(failure.message);
     } finally {
       try { await refresh(); } catch (err) { setError((err as Error).message); }
       inFlight.current = false;
