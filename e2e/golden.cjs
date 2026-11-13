@@ -87,6 +87,8 @@ async function main() {
       await page.getByRole("button", {name: "Close footage"}).click();
       console.log("Tables shown in both views and Live board:", labels.length);
     }
+    const closeFootage = page.getByRole("button", { name: "Close footage" });
+    if (await closeFootage.isVisible()) await closeFootage.click();
     await page.getByRole("link", { name: "Live board" }).click();
     await page.getByRole("button", { name: "Start sample restaurant" }).click();
     await page.getByLabel("Dish").fill("Noodles");
@@ -105,6 +107,13 @@ async function main() {
     await page.getByText("Saved report", { exact: true }).waitFor();
     await page.reload();
     await page.getByText("Saved report", { exact: true }).waitFor();
+    await page.getByLabel("Question").fill("what about is this website");
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByText(/^Mise helps restaurant staff/).waitFor();
+    await page.getByLabel("Question").fill("What is the busiest time and busiest day?");
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByText(/Busiest day of the week:|No party arrivals were recorded in the selected period./).waitFor();
+    if (await page.getByLabel("Question").inputValue()) throw new Error("Sent question stayed in the composer");
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByLabel("Question").fill("What was our kitchen prep time?");
     if (!(await page.getByRole("button", { name: "Send" }).isEnabled())) throw new Error("Manual composer is disabled");
