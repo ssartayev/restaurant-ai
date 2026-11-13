@@ -19,7 +19,8 @@ from .detector import Detector
 from .occupancy_filter import FilterConfig
 from .pipeline import Pipeline
 from .transport import ApiClient, EventQueue, flush
-from .zones import TableZone
+from .zones import TableZone, point_in_polygon
+from .tableware import TABLEWARE_CLASSES, counts_by_surface
 
 HEARTBEAT_S, CONFIG_POLL_S = 15.0, 60.0
 
@@ -57,6 +58,7 @@ class Agent:
         self.client, self.queue, self.detector, self.clock = client, queue, detector, clock
         self.pipeline: Pipeline | None = None
         self._last_hb = self._last_cfg = 0.0
+        self.tableware: dict[str, int] = {}
         self.health: tuple[str, str | None] = ("ok", None)
 
     def refresh_config(self, force: bool = False) -> bool:
@@ -81,14 +83,38 @@ class Agent:
             return []
         if hasattr(frame, "mean"):
             self.health = frame_health(frame)
-        events = self.pipeline.step(t, self.detector.detect(frame))
+        detect_classes = getattr(self.detector, "detect_classes", None)
+        if detect_classes and self.health[0] == "ok":
+            detections = detect_classes(frame, (0, 60, *TABLEWARE_CLASSES))
+            surfaces = detections[60]
+            items = [box for category in TABLEWARE_CLASSES for box in detections[category]]
+            self.tableware = {}
+            for surface, count in zip(surfaces, counts_by_surface(surfaces, items)):
+                center = ((surface.x1 + surface.x2) / 2, (surface.y1 + surface.y2) / 2)
+                zone = next((z for z in self.pipeline.zones if any(
+                    point_in_polygon(center, poly) for poly in z.polygons)), None)
+                if zone:
+                    self.tableware[zone.table_id] = max(count, self.tableware.get(zone.table_id, 0))
+            people = detections[0]
+        else:
+            self.tableware = {}
+            people = self.detector.detect(frame)
+        events = self.pipeline.step(t, people) if self.health[0] == "ok" else []
         for ev in events:
             self.queue.put(ev)
         flush(self.queue, self.client)
         if t - self._last_hb >= HEARTBEAT_S:
             self._last_hb = t
             try:
-                self.client.send_heartbeat(self.pipeline.heartbeat(t, *self.health))
+                heartbeat = self.pipeline.heartbeat(t, *self.health)
+                if self.health[0] != "ok":
+                    heartbeat["zones"] = []
+                for zone in heartbeat["zones"]:
+                    table_id = zone["table_id"]
+                    if table_id in self.tableware:
+                        zone["tableware_count"] = min(self.tableware[table_id], 100)
+                    zone["people_present"] = self.pipeline._last_counts.get(table_id, 0) > 0
+                self.client.send_heartbeat(heartbeat)
             except Exception:
                 pass  # the server marks the camera offline after 45 s without heartbeats
         return events

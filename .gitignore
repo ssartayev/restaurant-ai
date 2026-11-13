@@ -13,3 +13,7 @@ queue.db
 *.mp4
 .env
 restaurant-ai.zip
+
+.models/
+
+.local-postgres/

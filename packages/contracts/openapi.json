@@ -728,6 +728,359 @@
     }
    }
   },
+  "/v1/restaurants/{rid}/orders": {
+   "get": {
+    "summary": "Orders",
+    "operationId": "orders_v1_restaurants__rid__orders_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Send Order",
+    "operationId": "send_order_v1_restaurants__rid__orders_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OrderIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/restaurants/{rid}/orders/{oid}": {
+   "patch": {
+    "summary": "Advance Order",
+    "operationId": "advance_order_v1_restaurants__rid__orders__oid__patch",
+    "parameters": [
+     {
+      "name": "oid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Oid"
+      }
+     },
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OrderStatus"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/restaurants/{rid}/tables/{tid}/bill/paid": {
+   "post": {
+    "summary": "Mark Bill Paid",
+    "operationId": "mark_bill_paid_v1_restaurants__rid__tables__tid__bill_paid_post",
+    "parameters": [
+     {
+      "name": "tid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Tid"
+      }
+     },
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/restaurants/{rid}/analytics/report": {
+   "get": {
+    "summary": "Restaurant Report",
+    "operationId": "restaurant_report_v1_restaurants__rid__analytics_report_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "week",
+        "month",
+        "year",
+        "custom"
+       ],
+       "type": "string",
+       "default": "week",
+       "title": "Period"
+      }
+     },
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/restaurants/{rid}/analytics/chat": {
+   "post": {
+    "summary": "Restaurant Report Chat",
+    "operationId": "restaurant_report_chat_v1_restaurants__rid__analytics_chat_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReportQuestion"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "get": {
+    "summary": "Report Chat History",
+    "operationId": "report_chat_history_v1_restaurants__rid__analytics_chat_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/restaurants/{rid}/settings": {
    "patch": {
     "summary": "Patch Settings",
@@ -2060,6 +2413,78 @@
     "title": "OccupancyEvent",
     "description": "Mirrors packages/contracts/events/occupancy-changed.v1.schema.json. Extra fields are rejected."
    },
+   "OrderIn": {
+    "properties": {
+     "table_id": {
+      "type": "string",
+      "title": "Table Id"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/OrderItem"
+      },
+      "type": "array",
+      "maxItems": 50,
+      "minItems": 1,
+      "title": "Items"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "table_id",
+     "items"
+    ],
+    "title": "OrderIn"
+   },
+   "OrderItem": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "quantity": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 1.0,
+      "title": "Quantity"
+     },
+     "notes": {
+      "type": "string",
+      "maxLength": 300,
+      "title": "Notes",
+      "default": ""
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "name",
+     "quantity"
+    ],
+    "title": "OrderItem"
+   },
+   "OrderStatus": {
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "preparing",
+       "ready",
+       "served"
+      ],
+      "title": "Status"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "status"
+    ],
+    "title": "OrderStatus"
+   },
    "PartyIn": {
     "properties": {
      "name": {
@@ -2144,6 +2569,66 @@
     "additionalProperties": false,
     "type": "object",
     "title": "PartyPatch"
+   },
+   "ReportQuestion": {
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "question",
+       "summary"
+      ],
+      "title": "Mode",
+      "default": "question"
+     },
+     "question": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Question"
+     },
+     "period": {
+      "type": "string",
+      "enum": [
+       "week",
+       "month",
+       "year",
+       "custom"
+      ],
+      "title": "Period",
+      "default": "week"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "question"
+    ],
+    "title": "ReportQuestion"
    },
    "SeatIn": {
     "properties": {
@@ -2416,6 +2901,30 @@
    },
    "ZoneState": {
     "properties": {
+     "tableware_count": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tableware Count"
+     },
+     "people_present": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "People Present"
+     },
      "table_id": {
       "type": "string",
       "title": "Table Id"

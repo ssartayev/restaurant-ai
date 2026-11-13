@@ -42,6 +42,7 @@ def test_cross_tenant_access_is_404_for_every_route_and_role(client, world, othe
         "tid": world["tables"]["T5"].id,
         "aid": db.scalar(select(Alert.id).where(Alert.restaurant_id == a)),
         "pid": db.scalar(select(WaitlistParty.id).where(WaitlistParty.restaurant_id == a)),
+        "oid": "foreign-order",
         "cid": db.scalar(select(Camera.id).where(Camera.restaurant_id == a)),
         "uid": world["users"]["staff"].id,
     }
@@ -58,7 +59,7 @@ def test_cross_tenant_access_is_404_for_every_route_and_role(client, world, othe
 
 
 def test_unauthenticated_requests_are_401(client, world):
-    ids = {"rid": world["restaurant"].id, "tid": "x", "aid": "x", "pid": "x", "cid": "x", "uid": "x"}
+    ids = {"rid": world["restaurant"].id, "tid": "x", "aid": "x", "pid": "x", "cid": "x", "uid": "x", "oid": "x"}
     for method, path in routes():
         if path.startswith("/v1/restaurants/{rid}") or path in SESSION_ONLY | DEVICE:
             r = client.request(method, fill(path, ids), json={})

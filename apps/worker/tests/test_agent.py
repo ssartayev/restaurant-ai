@@ -109,3 +109,20 @@ def test_build_pipeline_and_frame_health():
     assert frame_health(np.full((10, 10, 3), 128, dtype=np.uint8))[1].startswith("image has no detail")
     rng = np.random.default_rng(0)
     assert frame_health(rng.integers(40, 200, (10, 10, 3)).astype(np.uint8)) == ("ok", None)
+
+
+def test_tableware_heartbeat_assigns_items_to_table_surface(tmp_path):
+    agent, client, _, clock = make(tmp_path)
+
+    class TablewareDetector:
+        def detect_classes(self, frame, classes):
+            boxes = {category: [] for category in classes}
+            boxes[60] = [Box(.3, .3, .5, .5)]
+            boxes[45] = [Box(.34, .34, .38, .38), Box(.7, .7, .8, .8)]
+            return boxes
+
+    agent.detector = TablewareDetector()
+    run(agent, clock, 1)
+    zone = client.heartbeats[-1]["zones"][0]
+    assert zone["tableware_count"] == 1
+    assert zone["people_present"] is False
