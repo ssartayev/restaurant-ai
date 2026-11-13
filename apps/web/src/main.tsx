@@ -14,7 +14,8 @@ function clock(seconds: number) {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-function CameraReview() {
+function CameraReview({ path, onActive }: { path: string; onActive: (active: boolean) => void }) {
+  const board = path === "/" || path === "/operations";
   const [staffMarks, setStaffMarks] = useState<StaffMark[]>([]);
   const [personSelection, setPersonSelection] = useState<StaffMark>();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -36,7 +37,13 @@ function CameraReview() {
   const [ratio, setRatio] = useState(16 / 9);
 
   useEffect(() => {
+    setView(board ? "floor" : "camera");
+    if (!board && path !== "/recordings") videoRef.current?.pause();
+  }, [path, board]);
+
+  useEffect(() => {
     if (!file) return;
+    onActive(true);
     const objectUrl = URL.createObjectURL(file);
     const request = new AbortController();
     setUrl(objectUrl);
@@ -120,9 +127,12 @@ function CameraReview() {
 
   return <main>
     <Navigation />
-    <header className="page-heading"><div><p>SEE THE SERVICE, FRAME BY FRAME</p><h1>Recording review</h1></div><label className="upload"><span className="upload-icon" aria-hidden="true">↥</span><span><strong>Choose recording</strong><small>{file?.name ?? "Upload a restaurant video"}</small></span>
+    <header className="page-heading"><div><p>SEE THE SERVICE, FRAME BY FRAME</p><h1>{board ? "Live board" : "Recording review"}</h1></div><label className="upload"><span className="upload-icon" aria-hidden="true">↥</span><span><strong>Choose recording</strong><small>{file?.name ?? "Upload a restaurant video"}</small></span>
       <input aria-label="Choose recording" type="file" accept="video/*" onChange={(event) => setFile(event.currentTarget.files?.[0])} />
     </label></header>
+    {file && <div className="footage-source"><div><strong>Active source: {file.name}</strong><small>Recording playback · {clock(time)} · This board follows the video, not the sample restaurant. Restaurant orders and saved History remain separate.</small></div>
+      <button onClick={() => { videoRef.current?.pause(); setFile(undefined); setAnalysis(undefined); setUrl(""); onActive(false); }}>Close footage</button>
+    </div>}
     {message && <p role="status">{message}</p>}
     {analysis && tables.length > 0 && <div className="metrics">
       <div><strong>{tables.length}</strong><span>Tables</span></div>
@@ -278,4 +288,30 @@ function CameraReview() {
   </main>;
 }
 
-createRoot(document.getElementById("root")!).render(window.location.pathname === "/recordings" ? <CameraReview /> : <Operations />);
+function Workspace() {
+  const [path, setPath] = useState(window.location.pathname);
+  const [hasFootage, setHasFootage] = useState(false);
+  useEffect(() => {
+    const pop = () => setPath(window.location.pathname);
+    const navigate = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = (event.target as Element).closest("a");
+      if (!link || link.target || link.hasAttribute("download")) return;
+      const url = new URL(link.href);
+      if (url.origin !== location.origin || !["/", "/operations", "/recordings", "/kitchen", "/history", "/assistant", "/cameras"].includes(url.pathname)) return;
+      event.preventDefault();
+      history.pushState(null, "", url.pathname);
+      setPath(url.pathname);
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("popstate", pop);
+    document.addEventListener("click", navigate);
+    return () => { window.removeEventListener("popstate", pop); document.removeEventListener("click", navigate); };
+  }, []);
+  const showFootage = path === "/recordings" || (hasFootage && ["/", "/operations"].includes(path));
+  return <>
+    <div hidden={!showFootage}><CameraReview path={path} onActive={setHasFootage} /></div>
+    {!showFootage && <Operations key={path} />}
+  </>;
+}
+createRoot(document.getElementById("root")!).render(<Workspace />);

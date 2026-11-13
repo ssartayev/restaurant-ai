@@ -296,3 +296,7 @@ main { max-width: 1480px; }
 .person-label { pointer-events: auto; position: absolute; top: 0; left: 0; white-space: nowrap; background: #061e51; color: white; border: 1px solid white; border-radius: 4px; padding: 5px; font-size: .7rem; cursor: pointer; }
 .staff-identification { margin-top: 15px; }
 .staff-identification small { display: block; margin-top: 12px; color: var(--muted); }
+
+.footage-source { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px; background: #e2edf7; border: 1px solid #b7cde0; border-radius: 12px; margin-bottom: 16px; }
+.footage-source small { display: block; margin-top: 5px; color: #425c73; }
+.footage-source button { padding: 9px; border: 1px solid #abc2d7; border-radius: 8px; background: white; white-space: nowrap; }

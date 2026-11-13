@@ -77,7 +77,15 @@ async function main() {
       if (originalPosition !== await page.locator(".camera .table-marker").first().getAttribute("style")) {
         throw new Error("Dragging changed the camera position");
       }
-      console.log("Tables shown in both views:", labels.length);
+      await page.getByRole("link", {name: "Live board", exact: true}).click();
+      await page.getByRole("heading", {name: "Live board", exact: true}).waitFor();
+      await page.locator(".floor-view .table-marker").filter({hasText: "Patio 1"}).waitFor();
+      if (await page.locator(".floor-view .table-marker").count() !== labels.length) throw new Error("Board uses a different floor");
+      const boardTime = await page.locator(".playback-statistics").getAttribute("data-playback-time");
+      await page.getByRole("link", {name: "Recordings", exact: true}).click();
+      if (await page.locator(".playback-statistics").getAttribute("data-playback-time") !== boardTime) throw new Error("Navigation reset video time");
+      await page.getByRole("button", {name: "Close footage"}).click();
+      console.log("Tables shown in both views and Live board:", labels.length);
     }
     await page.getByRole("link", { name: "Live board" }).click();
     await page.getByRole("button", { name: "Start sample restaurant" }).click();
