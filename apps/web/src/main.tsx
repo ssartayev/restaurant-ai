@@ -94,12 +94,14 @@ function CameraReview() {
     capacity[a.table.id] - capacity[b.table.id]);
   const next = suggestions[0];
   const people = states.reduce((sum, reading) => sum + reading.people, 0);
-  const peak = timeline.reduce((max, [, readings]) =>
+  const elapsedTimeline = timeline.filter(([at]) => at <= time);
+  const peak = elapsedTimeline.reduce((max, [, readings]) =>
     Math.max(max, readings.reduce((sum, reading) => sum + reading.people, 0)), 0);
 
   const totals = tables.map(() => ({ occupiedSeconds: 0, peak: 0 }));
-  timeline.forEach(([sampleTime, readings], sampleIndex) => {
-    const nextTime = timeline[sampleIndex + 1]?.[0] ?? sampleTime;
+  elapsedTimeline.forEach(([sampleTime, readings], sampleIndex) => {
+    // Bound the final partial interval by playback time, and never fill long evidence gaps.
+    const nextTime = Math.min(time, timeline[sampleIndex + 1]?.[0] ?? time, sampleTime + 2);
     readings.forEach((reading, tableIndex) => {
       const total = totals[tableIndex];
       if (reading.state === "occupied") total.occupiedSeconds += nextTime - sampleTime;
@@ -107,7 +109,7 @@ function CameraReview() {
     });
   });
 
-  const busiest = timeline.find(([, readings]) => readings.reduce((sum, reading) => sum + reading.people, 0) === peak);
+  const busiest = elapsedTimeline.find(([, readings]) => readings.reduce((sum, reading) => sum + reading.people, 0) === peak);
 
   return <main>
     <Navigation />
@@ -132,7 +134,9 @@ function CameraReview() {
         onLoadedMetadata={({ currentTarget: video }) => {
           if (video.videoHeight) setRatio(video.videoWidth / video.videoHeight);
         }}
-        onTimeUpdate={({ currentTarget: video }) => setTime(video.currentTime)} />
+        onTimeUpdate={({ currentTarget: video }) => setTime(video.currentTime)}
+        onSeeking={({ currentTarget: video }) => setTime(video.currentTime)}
+        onSeeked={({ currentTarget: video }) => setTime(video.currentTime)} />
       {view === "camera" && (analysis?.objects?.[index]?.[1] ?? []).map((object, objectIndex) => {
         const [left, top, right, bottom] = object.box;
         return <div className="object-box" data-kind={object.kind} key={objectIndex}
@@ -183,9 +187,10 @@ function CameraReview() {
     </div> : <div className="empty recording-empty"><div><span className="empty-orbit" aria-hidden="true">↗</span><p className="eyebrow">A NEW PERSPECTIVE ON SERVICE</p><h2>Your dining room. In focus.</h2><p>Choose a fixed-camera restaurant recording to begin.</p><div className="empty-steps"><span>01 Upload</span><span>02 Analyze</span><span>03 Explore the floor</span></div></div></div>}
     {view === "camera" && analysis && <p className="note">Detection boxes sampled about once per second. Guest/waiter labels are behavioral estimates, not verified roles. Uncertain people remain unclassified; cleanliness is not verified.</p>}
     {view === "floor" && <p className="note">Drag tables to arrange the floor plan. Select a table to edit its number.</p>}
-    {tables.length > 0 && <details>
-      <summary>Recording statistics</summary>
-      <p>Peak seated: {peak}{peak > 0 && busiest && ` at ${clock(busiest[0])}`}</p>
+    {tables.length > 0 && <details open className="playback-statistics" data-playback-time={time}>
+      <summary>Recording statistics · up to {clock(time)}</summary>
+      <p className="note">Synchronized to playback. Pausing freezes the totals; seeking recalculates them. Gaps longer than two seconds are not counted as continuous evidence.</p>
+      <p>Peak seated so far: {peak}{peak > 0 && busiest && ` at ${clock(busiest[0])}`}</p>
       <table>
         <thead><tr><th>Table</th><th>Occupied time</th><th>Peak seated</th><th>Table readiness</th></tr></thead>
         <tbody>{tables.map((table, i) => <tr key={table.id}>

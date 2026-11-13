@@ -32,6 +32,26 @@ async function main() {
       await page.waitForFunction(() => document.querySelector("video").currentTime > 0);
       const labels = await page.locator(".camera .table-marker").allTextContents();
       await page.locator("video").evaluate((video) => video.pause());
+      const stats = page.locator(".playback-statistics");
+      async function seekTo(seconds) {
+        await page.locator("video").evaluate((video, at) => { video.currentTime = at; }, seconds);
+        await page.waitForFunction((at) => Math.abs(Number(document.querySelector(".playback-statistics").dataset.playbackTime) - at) < .1, seconds);
+      }
+      await seekTo(0);
+      const firstTotals = await stats.locator("tbody tr").allTextContents();
+      if ((await stats.locator("tbody tr td:first-of-type").allTextContents()).some(value => value !== "0:00"))
+        throw new Error("Future occupancy leaked into start-of-video totals");
+      await seekTo(25.5);
+      const laterTotals = await stats.locator("tbody tr").allTextContents();
+      if (JSON.stringify(firstTotals) === JSON.stringify(laterTotals))
+        throw new Error("Statistics did not advance with footage");
+      await seekTo(0);
+      if (JSON.stringify(firstTotals) !== JSON.stringify(await stats.locator("tbody tr").allTextContents()))
+        throw new Error("Statistics failed to rewind");
+      await seekTo(25.5);
+      if (JSON.stringify(laterTotals) !== JSON.stringify(await stats.locator("tbody tr").allTextContents()))
+        throw new Error("Seeking counted occupancy twice");
+
       await page.getByRole("button", { name: "2D floor plan" }).click();
       if (await page.locator(".object-box").count()) throw new Error("Detection boxes leaked into floor plan");
       const marker = page.locator(".floor-view .table-marker").first();
