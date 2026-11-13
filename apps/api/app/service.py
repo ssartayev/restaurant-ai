@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from . import bus, config
 from .models import (NEEDS_CLEARING, OCCUPIED, READY, Alert, Camera, Membership, Restaurant, Table,
-                     TableEvent, User, WaitlistParty, Zone)
+                     TableBill, TableEvent, TableObservation, User, WaitlistParty, Zone)
 from .state_machine import STAFF_TARGETS, TableSnapshot, decide_camera, decide_staff
 from .util import iso, utcnow
 
@@ -73,6 +73,7 @@ def _enter_state(db: Session, table: Table, new_state: str, now: datetime) -> tu
     values: dict = {"camera_presence_since": None}
     events: list = []
     if new_state == OCCUPIED:
+        _resolve_alerts(db, table, now, "bill_check")
         _resolve_alerts(db, table, now, "needs_clearing")
         values["greeted_at"] = None
     elif new_state == NEEDS_CLEARING:
@@ -82,7 +83,8 @@ def _enter_state(db: Session, table: Table, new_state: str, now: datetime) -> tu
             events.append(("alert.created", {"alert_id": alert.id, "table_id": table.id,
                                              "type": "needs_clearing", "label": table.label}))
     elif new_state == READY:
-        _resolve_alerts(db, table, now)
+        _resolve_alerts(db, table, now, "needs_clearing")
+        _resolve_alerts(db, table, now, "greet_reminder")
         values["greeted_at"] = None
         values["current_party_id"] = None
     return values, events
@@ -159,6 +161,57 @@ def apply_camera_observation(
     return decision.result
 
 
+def open_table_bill(db: Session, table: Table):
+    existing = select(TableBill.id).where(TableBill.table_id == table.id, TableBill.paid_at.is_(None))
+    if db.scalar(existing):
+        return
+    try:
+        with db.begin_nested():
+            db.add(TableBill(restaurant_id=table.restaurant_id, table_id=table.id))
+            db.flush()
+    except IntegrityError:
+        # Another ticket can open the same table's bill concurrently.
+        if not db.scalar(existing):
+            raise
+
+
+def mark_table_bill_paid(db: Session, table: Table, now: datetime):
+    db.execute(update(TableBill).where(TableBill.table_id == table.id, TableBill.paid_at.is_(None))
+               .values(paid_at=now))
+    _resolve_alerts(db, table, now, "bill_check")
+    db.commit()
+    bus.publish(table.restaurant_id, "table.updated", {"table_id": table.id})
+
+
+def _record_table_observation(db, restaurant, camera, table, zone, sent_at, now):
+    present = zone.get("people_present")
+    if present is None or sent_at < now - timedelta(seconds=config.HEARTBEAT_TIMEOUT_S):
+        return
+    if not db.scalar(select(Zone.id).where(Zone.camera_id == camera.id, Zone.table_id == table.id)):
+        return
+    observation = db.get(TableObservation, table.id)
+    if observation and sent_at <= observation.observed_at:
+        return
+    if observation is None:
+        observation = TableObservation(table_id=table.id, restaurant_id=restaurant.id,
+                                       camera_id=camera.id, observed_at=sent_at)
+        db.add(observation)
+    if (observation.camera_id != camera.id or
+            sent_at - observation.observed_at > timedelta(seconds=config.HEARTBEAT_TIMEOUT_S)):
+        observation.vacant_since = None
+    count = zone.get("tableware_count")
+    if count is not None and count != observation.tableware_count:
+        db.add(TableEvent(restaurant_id=restaurant.id, table_id=table.id,
+                          source="camera", type="tableware.changed", applied=False,
+                          reason=f"tableware_count={count}", observed_at=sent_at, received_at=now))
+    observation.camera_id = camera.id
+    observation.observed_at = sent_at
+    observation.vacant_since = None if present else observation.vacant_since or sent_at
+    observation.tableware_count = count
+    if present:
+        _resolve_alerts(db, table, now, "bill_check")
+
+
 def heartbeat(db: Session, restaurant: Restaurant, camera: Camera, zones: list[dict],
               sent_at: datetime, now: datetime, health: str = "ok",
               health_reason: str | None = None) -> dict:
@@ -176,18 +229,22 @@ def heartbeat(db: Session, restaurant: Restaurant, camera: Camera, zones: list[d
         covered = select(Zone.table_id).where(Zone.camera_id == camera.id)
         db.execute(update(Table).where(Table.restaurant_id == restaurant.id, Table.id.in_(covered))
                    .values(manual_hold=True, manual_hold_since=None, version=Table.version + 1))
+    if was_offline or health != "ok":
+        db.execute(update(TableObservation).where(TableObservation.camera_id == camera.id)
+                   .values(vacant_since=None, tableware_count=None))
     db.commit()
     if changed:
         bus.publish(restaurant.id, "camera.status", {"camera_id": camera.id, "status": "online"})
     results = {}
     sent_at = min(sent_at, now)
-    for z in zones:
+    for z in zones if health == "ok" else []:
         table = db.scalar(select(Table).where(
             Table.id == z["table_id"], Table.restaurant_id == restaurant.id))
         if table is None:
             results[z["table_id"]] = "rejected"
             continue
         db.refresh(table)
+        _record_table_observation(db, restaurant, camera, table, z, sent_at, now)
         results[table.id] = apply_camera_observation(
             db, restaurant, camera, table, bool(z["occupied"]), sent_at, now, record_ignored=False)
     return results
@@ -345,13 +402,31 @@ def floor_snapshot(db: Session, restaurant: Restaurant, now: datetime) -> dict:
     alerts = list(db.scalars(select(Alert).where(
         Alert.restaurant_id == rid, Alert.status != "resolved").order_by(Alert.created_at)))
     cameras = list(db.scalars(select(Camera).where(Camera.restaurant_id == rid)))
-    suggestions = suggest_seating(tables, parties)
+    fresh_after = now - timedelta(seconds=config.HEARTBEAT_TIMEOUT_S)
+    observations = {obs.table_id: obs for obs in db.scalars(select(TableObservation)
+        .join(Camera, Camera.id == TableObservation.camera_id).where(
+            TableObservation.restaurant_id == rid, TableObservation.observed_at >= fresh_after,
+            Camera.status == "online", Camera.health == "ok"))}
+    unpaid = set(db.scalars(select(TableBill.table_id).where(
+        TableBill.restaurant_id == rid, TableBill.paid_at.is_(None))))
+    priority = next((
+        {"table_id": table.id, "table_label": table.label, "party_size": party.party_size}
+        for party in parties
+        for table in sorted(tables, key=lambda entry: (entry.capacity, entry.state_since))
+        if table.state == NEEDS_CLEARING and table.id not in unpaid
+        and table.min_party <= party.party_size <= table.capacity
+    ), None)
+    suggestions = suggest_seating([table for table in tables if table.id not in unpaid], parties)
     return {
         "restaurant": {"id": rid, "name": restaurant.name, "timezone": restaurant.timezone,
                        "automation_enabled": restaurant.automation_enabled,
                        "is_demo": restaurant.is_demo, "settings": restaurant.settings or {}},
         "server_time": iso(now),
-        "tables": [table_json(t, now) for t in tables],
+        "tables": [table_json(t, now) | {
+            "tableware_count": observations[t.id].tableware_count if t.id in observations else None,
+            "bill_open": t.id in unpaid,
+        } for t in tables],
+        "reset_priority": priority,
         "alerts": [alert_json(a) for a in alerts],
         "waitlist": [party_json(p) for p in parties],
         "suggestions": [{"table_id": t, "party_id": p} for t, p in suggestions.items()],
@@ -396,6 +471,21 @@ def sweep(db: Session, now: datetime | None = None) -> dict:
         db.commit()
         out["renotify"] += 1
         bus.publish(a.restaurant_id, "alert.renotify", {"alert_id": a.id, "table_id": a.table_id})
+
+    # A payment check requires fresh vacancy evidence and a bill that predates the absence.
+    fresh_after = now - timedelta(seconds=config.HEARTBEAT_TIMEOUT_S)
+    grace_end = now - timedelta(seconds=config.BILL_CHECK_GRACE_S)
+    eligible = list(db.scalars(select(Table)
+        .join(TableBill, TableBill.table_id == Table.id)
+        .join(TableObservation, TableObservation.table_id == Table.id)
+        .join(Camera, Camera.id == TableObservation.camera_id)
+        .where(TableBill.paid_at.is_(None), Table.state.in_((NEEDS_CLEARING, READY)),
+               TableObservation.vacant_since <= grace_end, TableObservation.observed_at >= fresh_after,
+               TableBill.opened_at <= TableObservation.vacant_since,
+               Camera.status == "online", Camera.health == "ok")))
+    for table in eligible:
+        _open_alert(db, table, "bill_check", now)
+    db.commit()
 
     # 4. Retention: scrub guest name/phone, drop old events, delete expired demo sandboxes.
     pii_cutoff = now - timedelta(hours=config.WAITLIST_PII_HOURS)

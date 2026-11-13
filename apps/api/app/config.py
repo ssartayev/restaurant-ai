@@ -15,6 +15,7 @@ SESSION_HOURS = int(os.environ.get("SESSION_HOURS", "72"))
 # --- Domain thresholds (see AGENTS.md section 5) ---
 HEARTBEAT_TIMEOUT_S = int(os.environ.get("HEARTBEAT_TIMEOUT_S", "45"))    # camera offline after this
 STALE_EVENT_S = int(os.environ.get("STALE_EVENT_S", "120"))               # older events are history-only
+BILL_CHECK_GRACE_S = int(os.environ.get("BILL_CHECK_GRACE_S", "300"))
 GREET_REMINDER_S = int(os.environ.get("GREET_REMINDER_S", "180"))         # remind if not greeted
 RENOTIFY_S = int(os.environ.get("RENOTIFY_S", "300"))                     # re-notify unacked clearing alert
 PRESENCE_HINT_S = int(os.environ.get("PRESENCE_HINT_S", "180"))           # "Guests seated?" hint

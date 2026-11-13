@@ -5,12 +5,18 @@ os.environ["SWEEP"] = "0"
 import tempfile  # noqa: E402
 
 # A file database (not in-memory) so tests exercise real concurrent connections.
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{tempfile.mkdtemp()}/test.db")
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{tempfile.mkdtemp()}/test.db")
 
 from datetime import datetime  # noqa: E402
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+from sqlalchemy.engine import make_url  # noqa: E402
+
+test_url = make_url(os.environ["DATABASE_URL"])
+if not test_url.drivername.startswith("sqlite") and not (test_url.database or "").endswith("_test"):
+    raise RuntimeError("TEST_DATABASE_URL must name a disposable database ending in _test")
 
 from app import db as dbmod  # noqa: E402
 from app import seed  # noqa: E402

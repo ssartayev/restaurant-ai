@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta
 
 from app import analytics, seed
+from sqlalchemy import delete
+
 from app.models import Organization, Restaurant, Table, TableEvent
 
 
@@ -52,3 +54,25 @@ def test_seeded_demo_has_non_empty_analytics(db):
     out = seed.create_restaurant(db, seed.load_seed(), now=now)
     s = analytics.summary(db, out["restaurant"].id, now - timedelta(days=7), now, now)
     assert s["turns"] > 100 and s["median_departure_to_ready_minutes"] > 0
+
+
+def test_summary_counts_overlap_for_a_table_occupied_before_period(db):
+    now = datetime(2026, 11, 13, 12)
+    out = seed.create_restaurant(db, seed.load_seed(), now=now, with_history=False)
+    restaurant = out["restaurant"]
+    table = out["tables"]["T1"]
+    db.execute(delete(TableEvent).where(TableEvent.restaurant_id == restaurant.id))
+    start = now - timedelta(hours=1)
+    seated = start - timedelta(minutes=30)
+    departed = start + timedelta(minutes=30)
+    db.add_all([
+        TableEvent(restaurant_id=restaurant.id, table_id=table.id, source="staff",
+                   type="test", to_state="occupied", applied=True, observed_at=seated),
+        TableEvent(restaurant_id=restaurant.id, table_id=table.id, source="staff",
+                   type="test", to_state="needs_clearing", applied=True, observed_at=departed),
+    ])
+    db.commit()
+    result = analytics.summary(db, restaurant.id, start, now, now)
+    assert result["turns"] == 1
+    assert result["avg_turn_minutes"] == 60
+    assert result["occupancy_pct"] == round(50 / result["tables"], 1)

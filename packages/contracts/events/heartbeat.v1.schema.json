@@ -24,7 +24,9 @@
         "properties": {
           "table_id": {"type": "string"},
           "occupied": {"type": "boolean"},
-          "since": {"type": "string", "format": "date-time"}
+          "since": {"type": "string", "format": "date-time"},
+          "tableware_count": {"type": "integer", "minimum": 0, "maximum": 100},
+          "people_present": {"type": "boolean"}
         }
       }
     }

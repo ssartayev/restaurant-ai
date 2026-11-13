@@ -172,3 +172,51 @@ class DemoRate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ip: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class OrderTicket(Base):
+    __tablename__ = "order_tickets"
+    id: Mapped[str] = _pk("ord")
+    restaurant_id: Mapped[str] = _rid()
+    table_id: Mapped[str | None] = mapped_column(ForeignKey("tables.id", ondelete="SET NULL"))
+    table_label: Mapped[str] = mapped_column(String(32))
+    server_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    items: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default="sent")
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    preparing_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ready_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    served_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TableObservation(Base):
+    """Latest table-level evidence from the edge. Frames stay on the camera device."""
+    __tablename__ = "table_observations"
+    table_id: Mapped[str] = mapped_column(ForeignKey("tables.id", ondelete="CASCADE"), primary_key=True)
+    restaurant_id: Mapped[str] = _rid()
+    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"))
+    observed_at: Mapped[datetime] = mapped_column(DateTime)
+    vacant_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    tableware_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class TableBill(Base):
+    __tablename__ = "table_bills"
+    id: Mapped[str] = _pk("bil")
+    restaurant_id: Mapped[str] = _rid()
+    table_id: Mapped[str] = mapped_column(ForeignKey("tables.id", ondelete="CASCADE"))
+    opened_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    __table_args__ = (Index("uq_open_table_bill", "table_id", unique=True,
+                            sqlite_where=text("paid_at IS NULL"), postgresql_where=text("paid_at IS NULL")),)
+
+
+class ReportExchange(Base):
+    __tablename__ = "report_exchanges"
+    id: Mapped[str] = _pk("ask")
+    restaurant_id: Mapped[str] = _rid()
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    question: Mapped[str] = mapped_column(String(2000))
+    report: Mapped[dict] = mapped_column(JSON)
+    answer: Mapped[str | None] = mapped_column(String, nullable=True)

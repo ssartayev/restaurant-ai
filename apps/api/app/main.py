@@ -13,13 +13,13 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from . import analytics, bus, config, demo, scenario, security, service
+from . import analytics, bus, config, demo, report_chat, scenario, security, service
 from . import seed as seed_mod
 from .db import SessionLocal, get_db, init_db
-from .models import (ROLES, Alert, AuthSession, Camera, DemoRate, Membership, Restaurant, Table,
+from .models import (ROLES, Alert, AuthSession, Camera, DemoRate, Membership, OrderTicket, ReportExchange, Restaurant, Table, TableBill,
                      TableEvent, User, WaitlistParty, Zone)
 from .state_machine import STAFF_COMMANDS
 from .util import iso, to_naive_utc, utcnow
@@ -230,6 +230,8 @@ class EventsIn(Strict):
 
 
 class ZoneState(Strict):
+    tableware_count: int | None = Field(None, ge=0, le=100)
+    people_present: bool | None = None
     table_id: str
     occupied: bool
     since: datetime | None = None
@@ -297,6 +299,8 @@ def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
 @app.get("/v1/restaurants/{rid}/floor")
 def get_floor(ctx: Ctx = Depends(member()), db: Session = Depends(get_db)):
     out = service.floor_snapshot(db, ctx.restaurant, utcnow())
+    if ctx.role != "admin":
+        out["alerts"] = [alert for alert in out["alerts"] if alert["type"] != "bill_check"]
     out["role"] = ctx.role
     out["demo"] = demo.status(ctx.restaurant.id) if ctx.restaurant.is_demo else None
     return out
@@ -328,6 +332,8 @@ def seat(tid: str, body: SeatIn, ctx: Ctx = Depends(member("host")), db: Session
         WaitlistParty.id == body.party_id, WaitlistParty.restaurant_id == ctx.restaurant.id))
     if party is None:
         raise HTTPException(404, "not found")
+    if db.scalar(select(TableBill.id).where(TableBill.table_id == tid, TableBill.paid_at.is_(None))):
+        raise HTTPException(409, "Close the open bill before seating another party.")
     now = utcnow()
     try:
         service.seat_party(db, ctx.restaurant, table, party, ctx.user, now, body.expected_version)
@@ -370,6 +376,8 @@ async def stream(rid: str, request: Request):
 def list_alerts(status: str | None = None, ctx: Ctx = Depends(member()),
                 db: Session = Depends(get_db)):
     q = select(Alert).where(Alert.restaurant_id == ctx.restaurant.id).order_by(Alert.created_at.desc())
+    if ctx.role != "admin":
+        q = q.where(Alert.type != "bill_check")
     q = q.where(Alert.status == status) if status else q.where(Alert.status != "resolved")
     return [service.alert_json(a) for a in db.scalars(q.limit(200))]
 
@@ -377,7 +385,7 @@ def list_alerts(status: str | None = None, ctx: Ctx = Depends(member()),
 @app.post("/v1/restaurants/{rid}/alerts/{aid}/ack")
 def ack_alert(aid: str, ctx: Ctx = Depends(member()), db: Session = Depends(get_db)):
     alert = db.scalar(select(Alert).where(Alert.id == aid, Alert.restaurant_id == ctx.restaurant.id))
-    if alert is None:
+    if alert is None or (alert.type == "bill_check" and ctx.role != "admin"):
         raise HTTPException(404, "not found")
     result = service.acknowledge_alert(db, alert, ctx.user, utcnow())
     return {"result": result, "alert": service.alert_json(alert)}
@@ -460,6 +468,139 @@ def analytics_peak(from_: datetime | None = Query(None, alias="from"), to: datet
                    ctx: Ctx = Depends(member("admin")), db: Session = Depends(get_db)):
     start, end, _ = _range(from_, to, 28)
     return analytics.peak_hours(db, ctx.restaurant.id, ctx.restaurant.timezone, start, end)
+
+
+class OrderItem(Strict):
+    name: str = Field(min_length=1, max_length=100)
+    quantity: int = Field(ge=1, le=100)
+    notes: str = Field(default="", max_length=300)
+
+
+class OrderIn(Strict):
+    table_id: str
+    items: list[OrderItem] = Field(min_length=1, max_length=50)
+
+
+class OrderStatus(Strict):
+    status: Literal["preparing", "ready", "served"]
+
+
+def _order_json(ticket: OrderTicket) -> dict:
+    return {key: getattr(ticket, key) for key in ("id", "table_id", "table_label", "server_id", "items", "status")} | {
+        key: iso(getattr(ticket, key)) for key in ("sent_at", "preparing_at", "ready_at", "served_at")
+    }
+
+
+@app.get("/v1/restaurants/{rid}/orders")
+def orders(ctx: Ctx = Depends(member()), db: Session = Depends(get_db)):
+    rows = db.scalars(select(OrderTicket).where(OrderTicket.restaurant_id == ctx.restaurant.id,
+                      OrderTicket.status != "served").order_by(OrderTicket.sent_at))
+    return [_order_json(ticket) for ticket in rows]
+
+
+@app.post("/v1/restaurants/{rid}/orders", status_code=201)
+def send_order(body: OrderIn, ctx: Ctx = Depends(member()), db: Session = Depends(get_db)):
+    table = _table(db, ctx.restaurant.id, body.table_id)
+    ticket = OrderTicket(restaurant_id=ctx.restaurant.id, table_id=table.id, table_label=table.label,
+                         server_id=ctx.user.id, items=[item.model_dump() for item in body.items])
+    db.add(ticket)
+    service.open_table_bill(db, table)
+    db.commit()
+    bus.publish(ctx.restaurant.id, "order.updated", {"order_id": ticket.id})
+    return _order_json(ticket)
+
+
+@app.patch("/v1/restaurants/{rid}/orders/{oid}")
+def advance_order(oid: str, body: OrderStatus, ctx: Ctx = Depends(member()), db: Session = Depends(get_db)):
+    ticket = db.scalar(select(OrderTicket).where(OrderTicket.id == oid,
+                       OrderTicket.restaurant_id == ctx.restaurant.id))
+    if ticket is None:
+        raise HTTPException(404, "not found")
+    if ticket.status == body.status:
+        return _order_json(ticket)
+    expected = {"preparing": "sent", "ready": "preparing", "served": "ready"}[body.status]
+    result = db.execute(update(OrderTicket).where(OrderTicket.id == oid,
+                        OrderTicket.restaurant_id == ctx.restaurant.id, OrderTicket.status == expected)
+                        .values(status=body.status, **{f"{body.status}_at": utcnow()}))
+    if not result.rowcount:
+        raise HTTPException(409, "Order is no longer at the expected stage.")
+    db.commit()
+    db.refresh(ticket)
+    bus.publish(ctx.restaurant.id, "order.updated", {"order_id": ticket.id})
+    return _order_json(ticket)
+
+
+@app.post("/v1/restaurants/{rid}/tables/{tid}/bill/paid")
+def mark_bill_paid(tid: str, ctx: Ctx = Depends(member("host")), db: Session = Depends(get_db)):
+    table = _table(db, ctx.restaurant.id, tid)
+    service.mark_table_bill_paid(db, table, utcnow())
+    return {"ok": True}
+
+
+ReportPeriod = Literal["week", "month", "year", "custom"]
+
+
+def _restaurant_report(db: Session, restaurant: Restaurant, period: ReportPeriod,
+                       start: datetime | None, end: datetime | None) -> dict:
+    now = utcnow()
+    if period == "custom":
+        if start is None or end is None:
+            raise HTTPException(422, "Custom reports require from and to timestamps.")
+        start, end = to_naive_utc(start), min(to_naive_utc(end), now)
+        if start >= end or end - start > timedelta(days=366):
+            raise HTTPException(422, "Choose a nonempty period of up to 366 days.")
+    else:
+        start = analytics.calendar_start(now, restaurant.timezone, period)
+        end = now
+    return {
+        "period": period,
+        "summary": analytics.summary(db, restaurant.id, start, end, now),
+        "peaks": analytics.peak_hours(db, restaurant.id, restaurant.timezone, start, end),
+        "orders": analytics.order_summary(db, restaurant.id, start, end),
+    }
+
+
+@app.get("/v1/restaurants/{rid}/analytics/report")
+def restaurant_report(period: ReportPeriod = "week", from_: datetime | None = Query(None, alias="from"),
+                      to: datetime | None = None, ctx: Ctx = Depends(member("admin")),
+                      db: Session = Depends(get_db)):
+    return _restaurant_report(db, ctx.restaurant, period, from_, to)
+
+
+class ReportQuestion(Strict):
+    mode: Literal["question", "summary"] = "question"
+    question: str = Field(min_length=1, max_length=2000)
+    period: ReportPeriod = "week"
+    start: datetime | None = None
+    end: datetime | None = None
+
+
+@app.post("/v1/restaurants/{rid}/analytics/chat")
+def restaurant_report_chat(body: ReportQuestion, ctx: Ctx = Depends(member("admin")),
+                           db: Session = Depends(get_db)):
+    report = _restaurant_report(db, ctx.restaurant, body.period, body.start, body.end)
+    exchange = ReportExchange(restaurant_id=ctx.restaurant.id, user_id=ctx.user.id,
+                              question=body.question, report=report | {"mode": body.mode})
+    db.add(exchange)
+    db.commit()
+    try:
+        response = (report_chat.summarize(report) if body.mode == "summary"
+                    else report_chat.answer(body.question, report))
+    except report_chat.ChatUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    exchange.answer = response
+    db.commit()
+    return {"id": exchange.id, "answer": response, "report": report}
+
+
+@app.get("/v1/restaurants/{rid}/analytics/chat")
+def report_chat_history(ctx: Ctx = Depends(member("admin")), db: Session = Depends(get_db)):
+    rows = db.scalars(select(ReportExchange).where(
+        ReportExchange.restaurant_id == ctx.restaurant.id, ReportExchange.user_id == ctx.user.id
+    ).order_by(ReportExchange.created_at.desc()).limit(100))
+    return [{"id": row.id, "question": row.question, "answer": row.answer,
+             "created_at": iso(row.created_at), "period": row.report["period"], "mode": row.report.get("mode", "question")}
+            for row in rows]
 
 
 # ------------------------------------------------------------------ setup (admin)

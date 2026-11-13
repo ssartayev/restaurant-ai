@@ -44,16 +44,11 @@ jobs:
         with: { python-version: "3.12" }
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - run: pip install -e "apps/api[dev]"
+      - run: pip install -e "apps/api" -e "apps/worker[video]" python-multipart "mediapipe>=0.10.32,<0.11"
       - run: cd apps/web && npm ci --no-audit --no-fund && npm run build
       - run: cd e2e && npm install --no-audit --no-fund && npx playwright install --with-deps chromium
-      - name: Browser end-to-end (hosted-demo acceptance path)
+      - name: Camera upload browser test
         run: |
-          DATABASE_URL=sqlite:////tmp/e2e.db SEED_DEV=0 python -m uvicorn app.main:app --app-dir apps/api --port 8010 --log-level warning &
+          PYTHONPATH=apps/worker python -m uvicorn app.video:app --app-dir apps/api --port 8010 --log-level warning &
           sleep 4
-          cd e2e && BASE_URL=http://localhost:8010 node golden.cjs
-      - run: cat e2e/artifacts/results.md >> "$GITHUB_STEP_SUMMARY"
-        if: always()
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: e2e-artifacts, path: e2e/artifacts }
+          BASE_URL=http://127.0.0.1:8010 node e2e/golden.cjs

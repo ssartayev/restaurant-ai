@@ -1,13 +1,13 @@
 """Analytics computed from the append-only table_events history."""
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from statistics import mean, median
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import NEEDS_CLEARING, OCCUPIED, READY, Table, TableEvent
+from .models import NEEDS_CLEARING, OCCUPIED, READY, OrderTicket, Table, TableEvent
 
 
 def _transitions(db: Session, rid: str, start: datetime, end: datetime):
@@ -30,7 +30,19 @@ def summary(db: Session, rid: str, start: datetime, end: datetime, now: datetime
     horizon = min(end, now)
     n_tables = len(list(db.scalars(select(Table.id).where(Table.restaurant_id == rid))))
     by_table = defaultdict(list)
-    for table_id, to_state, at in _transitions(db, rid, start, end):
+    # Include the last transition before the period for each table, so an
+    # occupied interval spanning midnight is counted inside the selected range.
+    previous = select(
+        TableEvent.table_id, TableEvent.to_state, TableEvent.observed_at,
+        func.row_number().over(partition_by=TableEvent.table_id,
+                               order_by=(TableEvent.observed_at.desc(), TableEvent.received_at.desc(),
+                                         TableEvent.id.desc())).label("rank"),
+    ).where(TableEvent.restaurant_id == rid, TableEvent.applied.is_(True),
+            TableEvent.to_state.is_not(None), TableEvent.observed_at < start).subquery()
+    for table_id, state, at in db.execute(select(
+            previous.c.table_id, previous.c.to_state, previous.c.observed_at).where(previous.c.rank == 1)):
+        by_table[table_id].append((state, at))
+    for table_id, to_state, at in _transitions(db, rid, start, horizon):
         by_table[table_id].append((to_state, at))
 
     turn_durations, clear_durations, occupied_s = [], [], 0.0
@@ -41,16 +53,18 @@ def summary(db: Session, rid: str, start: datetime, end: datetime, now: datetime
                 occ_start, clear_start = at, None
             else:
                 if occ_start is not None:
-                    turn_durations.append((at - occ_start).total_seconds())
-                    occupied_s += (at - occ_start).total_seconds()
+                    if at >= start:
+                        turn_durations.append((at - occ_start).total_seconds())
+                    occupied_s += max(0, (at - max(occ_start, start)).total_seconds())
                     occ_start = None
                 if to_state == NEEDS_CLEARING:
                     clear_start = at
                 elif to_state == READY and clear_start is not None:
-                    clear_durations.append((at - clear_start).total_seconds())
+                    if at >= start:
+                        clear_durations.append((at - clear_start).total_seconds())
                     clear_start = None
         if occ_start is not None and horizon > occ_start:
-            occupied_s += (horizon - occ_start).total_seconds()
+            occupied_s += max(0, (horizon - max(occ_start, start)).total_seconds())
 
     elapsed = max((horizon - start).total_seconds(), 1.0)
     return {
@@ -95,3 +109,25 @@ def peak_hours(db: Session, rid: str, tz: str, start: datetime, end: datetime) -
         "by_shift": [{"weekday": d, "shift": s, "arrivals": n, "per_week": round(n / weeks, 1)}
                      for (d, s), n in sorted(by_shift.items())],
     }
+
+
+def calendar_start(now: datetime, tz: str, period: str) -> datetime:
+    local = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(tz))
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "week":
+        start = midnight - timedelta(days=midnight.weekday())
+    elif period == "month":
+        start = midnight.replace(day=1)
+    else:
+        start = midnight.replace(month=1, day=1)
+    return start.astimezone(timezone.utc).replace(tzinfo=None)
+
+def order_summary(db: Session, rid: str, start: datetime, end: datetime) -> dict:
+    tickets = list(db.scalars(select(OrderTicket).where(
+        OrderTicket.restaurant_id == rid, OrderTicket.sent_at >= start, OrderTicket.sent_at < end)))
+    kitchen = [(t.ready_at - t.sent_at).total_seconds() / 60 for t in tickets if t.ready_at and t.ready_at < end]
+    pickup = [(t.served_at - t.ready_at).total_seconds() / 60 for t in tickets
+              if t.ready_at and t.served_at and t.served_at < end]
+    return {"tickets_sent": len(tickets),
+            "median_kitchen_minutes": round(median(kitchen), 1) if kitchen else None,
+            "median_ready_to_served_minutes": round(median(pickup), 1) if pickup else None}

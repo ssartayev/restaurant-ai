@@ -85,19 +85,23 @@ class OnnxYoloxDetector:
         return keep
 
     def detect(self, frame) -> list[Box]:
+        return self.detect_classes(frame, (self.PERSON_CLASS,))[self.PERSON_CLASS]
+
+    def detect_classes(self, frame, classes: tuple[int, ...]) -> dict[int, list[Box]]:
         np = self.np
         blob, r, (h, w) = self._preprocess(frame)
         pred = self._decode(self.session.run(None, {self.input_name: blob})[0][0])
-        scores = pred[:, 4] * pred[:, 5 + self.PERSON_CLASS]
-        mask = scores >= self.score_thr
-        pred, scores = pred[mask], scores[mask]
-        if not len(pred):
-            return []
-        xyxy = np.stack([pred[:, 0] - pred[:, 2] / 2, pred[:, 1] - pred[:, 3] / 2,
-                         pred[:, 0] + pred[:, 2] / 2, pred[:, 1] + pred[:, 3] / 2], 1) / r
-        out = []
-        for i in self._nms(xyxy, scores):
-            x1, y1, x2, y2 = xyxy[i]
-            out.append(Box(max(0.0, x1 / w), max(0.0, y1 / h), min(1.0, x2 / w), min(1.0, y2 / h),
-                           float(scores[i])))
-        return out
+        results = {}
+        for class_id in classes:
+            scores = pred[:, 4] * pred[:, 5 + class_id]
+            mask = scores >= self.score_thr
+            boxes, scores = pred[mask], scores[mask]
+            xyxy = np.stack([boxes[:, 0] - boxes[:, 2] / 2, boxes[:, 1] - boxes[:, 3] / 2,
+                             boxes[:, 0] + boxes[:, 2] / 2, boxes[:, 1] + boxes[:, 3] / 2], 1) / r
+            results[class_id] = [
+                Box(float(np.clip(x1 / w, 0, 1)), float(np.clip(y1 / h, 0, 1)),
+                    float(np.clip(x2 / w, 0, 1)), float(np.clip(y2 / h, 0, 1)), float(scores[i]))
+                for i in self._nms(xyxy, scores)
+                for x1, y1, x2, y2 in [xyxy[i]]
+            ]
+        return results
