@@ -323,3 +323,23 @@ Set `GEMINI_API_KEY` in the backend environment and set `GEMINI_MODEL=gemini-3.1
 The backend uses a trusted certificate bundle and tries another Gemini model on transient failures. Free-form requests can still fail if Google is unavailable or rejects the request. The Assistant clears the composer on Send and restores the draft if saving could not be confirmed. Saved questions remain in history even when generation fails.
 
 Verified locally with `make test`, `make e2e`, and a real free-form Gemini reply through the running chat endpoint. The user confirmed the Assistant works.
+
+## Tracking and table corrections (fix/waiter-tracking-and-tables)
+
+Reported problems: a waiter mark was lost after about five seconds, and recordings showed only one table.
+
+**Why the waiter mark was lost.** The browser matched people between 1-second samples. It allowed a move of 0.65 body heights per sample (a walking person covers about one), compared clothing only with the first frame, stopped for good on one ambiguous frame, and gave up after a 3-second gap.
+
+**What changed.**
+- `apps/api/app/tracking.py`: server-side person tracking at `TRACK_FPS` (default 4 frames a second; set `TRACK_FPS=1` for the old cost). Association uses box overlap, distance with a gate that grows with the gap, and clothing colour. A contested or merged box starts no track; a lost track can be resumed for up to 8 seconds when exactly one detection fits in position and clothing. The clothing template is not learned from merged crops.
+- Each person object in `/analyze` now carries a `track` number. `staffTracking.ts` labels the whole track of a marked person, before and after the marked frame.
+- `POST /analyze/{id}/recompute` re-runs occupancy from evidence kept in memory for the last 4 analyses. **Marked staff are now left out of occupancy and diner counts.**
+- `apps/api/app/table_discovery.py`: table evidence is added up over the clip. A table is accepted on two confident sightings (the old rule) or on weak sightings (score 0.10 or more) in at least a quarter of the sampled frames and at least three times. Confident boxes claim candidates first, so nothing the old rule found is lost.
+- Recordings page: **Add a missing table** (click the table in the video) and **Remove this table**. Both recompute occupancy.
+
+**Evidence.**
+- `make test`: 85 API tests (16 new), 22 worker tests, type-check, 3 browser-logic tests.
+- A synthetic clip built from real photographs (people about 20% of frame height, one walking across in 5 s past two others): the previous browser logic kept the mark on 1 of 20 samples; the tracker keeps one track for all 20. Second clip, driven through the real UI in Chromium: table added by hand, diners 2 -> 1 after marking a seated person, walking person labelled on 18 of 19 seconds (the missing second is a detector miss, not a lost track).
+- **Not verified:** real restaurant footage (none available where this was written), the MediaPipe pose path (stubbed in those runs because the machine lacked libGLES), and whether the weak-evidence rule finds more real tables without adding false ones. Check on the CCTV clip and report tables found before and after.
+
+**Still open.** The detector itself misses tables seen from directly above and small people in wide shots; that needs a model trained or fine-tuned on restaurant footage. Identical uniforms crossing still stop a mark. Analysis takes longer (the detector runs about 4 times a second instead of once).

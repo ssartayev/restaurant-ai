@@ -58,6 +58,7 @@ test-worker:
 
 typecheck:
 	cd apps/web && npm run typecheck
+	node --experimental-strip-types --no-warnings --test apps/web/tests/staffTracking.test.ts
 
 e2e: build
 	@tmp=$$(mktemp -d); \
